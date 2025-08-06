@@ -1,0 +1,84 @@
+# thinkingsdk.yaml - ThinkingSDK Configuration
+# Place this file in your project root directory
+
+# API Configuration
+# Security: Never hardcode API keys. Use environment variables or secure key storage
+api_key_source: "env:THINKINGSDK_API_KEY"  # Required: Points to environment variable
+server_url: "${THINKINGSDK_SERVER_URL:-http://localhost:8000}"  # Optional: Override via env var
+environment: "${ENV:-development}"  # Used for filtering in dashboard
+
+# Core Behavior
+enabled: true  # Master switch - set to false to disable all tracking
+auto_start: false  # If true, automatically starts tracking on import (not recommended)
+sampling_rate: 1.0  # Fraction of events to capture (1.0 = 100%, 0.1 = 10%)
+
+# Tracking Configuration
+tracking:
+  mode: "selective"  # Options: "manual" | "selective" | "all"
+  # - manual: Only track functions with @thinking.track decorator
+  # - selective: Track based on include/exclude patterns below
+  # - all: Track everything (not recommended for production)
+  
+  # What to track (selective mode)
+  include_modules: []  # Example: ["myapp.core", "myapp.payments"]
+  include_functions: []  # Example: ["process_*", "handle_*", "api_*"]
+  exclude_patterns:  # Always excluded
+    - "test_*"
+    - "*_test.py"
+    - "__pycache__"
+    - "*.pyc"
+    - ".venv"
+    - "venv"
+    - "migrations"
+  
+  # What data to capture
+  capture_locals: true  # Capture local variables in functions
+  capture_returns: false  # Capture function return values
+  capture_exceptions: true  # Capture exception details
+  capture_performance: true  # Track execution timing
+  capture_memory: false  # Track memory usage (requires psutil)
+  capture_call_patterns: true  # Detect recursion, hot paths
+  capture_source_lines: false  # Include source code lines (verbose)
+  capture_data_flow: false  # Track variable changes over time
+  
+  # Limits
+  max_locals: 10  # Maximum number of local variables to capture
+  max_local_length: 500  # Maximum string length for local variable values
+  max_stack_depth: 50  # Maximum call stack depth to track
+
+# Performance Thresholds
+performance:
+  slow_function_threshold_ms: 100  # Functions slower than this trigger alerts
+  hot_path_threshold_calls: 50  # Functions called more than this are "hot paths"
+  memory_spike_threshold_mb: 100  # Memory increases above this trigger alerts
+
+# Privacy & Security
+privacy:
+  redact_keys:  # Keys to redact in captured data
+    - "password"
+    - "passwd"
+    - "token"
+    - "api_key"
+    - "apikey"
+    - "secret"
+    - "private"
+    - "ssn"
+    - "credit_card"
+    - "card_number"
+  sanitize_sql: true  # Redact values from SQL queries
+  hash_user_identifiers: false  # Hash user IDs before sending
+
+# Network & Batching
+export:
+  batch_size: 100  # Number of events to batch before sending
+  flush_interval_seconds: 5  # Maximum time to wait before sending partial batch
+  max_queue_size: 10000  # Maximum events to buffer (drops oldest when full)
+  timeout_seconds: 10  # HTTP request timeout
+  retry_attempts: 3  # Number of retries for failed requests
+  circuit_breaker_threshold: 5  # Consecutive failures before circuit opens
+  circuit_breaker_timeout: 60  # Seconds to wait before retrying after circuit opens
+
+# Advanced Settings
+debug: false  # Enable debug logging
+log_level: "WARNING"  # DEBUG | INFO | WARNING | ERROR
+custom_handlers: []  # Python paths to custom event handlers

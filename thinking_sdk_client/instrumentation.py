@@ -41,6 +41,13 @@ class RuntimeInstrumentation:
                 - max_locals: Max number of local variables to capture (default: 5)
                 - max_local_length: Max string length for local values (default: 120)
                 - capture_returns: Whether to capture function returns (default: False)
+                - capture_performance: Whether to capture execution timing (default: True)
+                - capture_memory: Whether to capture memory usage (default: False)
+                - capture_call_patterns: Whether to detect call patterns (default: True)
+                - capture_data_flow: Whether to track variable changes (default: False)
+                - capture_source_lines: Whether to capture source code lines (default: False)
+                - slow_function_threshold: Threshold in seconds for slow function detection (default: 0.1)
+                - hot_path_threshold: Call count threshold for hot path detection (default: 50)
                 - ignore_patterns: Additional regex patterns to ignore
                 - ignore_functions: Additional function names to ignore
                 - sample_rate: Fraction of events to capture (default: 1.0)
@@ -48,11 +55,35 @@ class RuntimeInstrumentation:
         self.queue = queue
         self._config = config or {}
         
-        # Configuration settings
+        # Basic configuration settings
         self.max_locals = self._config.get('max_locals', 5)
         self.max_local_length = self._config.get('max_local_length', 120)
         self.capture_returns = self._config.get('capture_returns', False)
         self.sample_rate = self._config.get('sample_rate', 1.0)
+        
+        # Enhanced tracking configuration
+        self.capture_performance = self._config.get('capture_performance', True)
+        self.capture_memory = self._config.get('capture_memory', False)
+        self.capture_call_patterns = self._config.get('capture_call_patterns', True)
+        self.capture_data_flow = self._config.get('capture_data_flow', False)
+        self.capture_source_lines = self._config.get('capture_source_lines', False)
+        self.slow_function_threshold = self._config.get('slow_function_threshold', 0.1)
+        self.hot_path_threshold = self._config.get('hot_path_threshold', 50)
+        
+        # Runtime tracking state
+        if self.capture_performance or self.capture_call_patterns:
+            from collections import defaultdict
+            self.function_call_counts = defaultdict(int)
+            self.function_timings = defaultdict(list)
+            self.call_stack = []
+            
+        if self.capture_memory:
+            try:
+                import psutil
+                self.process = psutil.Process()
+                self._last_memory = None
+            except ImportError:
+                self.capture_memory = False  # Disable if psutil not available
         
         # Build ignore patterns
         self.ignore_patterns = set(self.DEFAULT_IGNORE_PATTERNS)
@@ -188,7 +219,7 @@ class RuntimeInstrumentation:
             if not self._should_sample():
                 return self._trace_calls
                 
-            # Build event info
+            # Build base event info
             event_info = {
                 "ts": time.time(),
                 "pid": os.getpid(),
@@ -199,20 +230,20 @@ class RuntimeInstrumentation:
                 "line": frame.f_lineno,
             }
             
-            # Add event-specific data
+            # Add enhanced context based on configuration
+            if self.capture_memory:
+                event_info["memory"] = self._capture_memory_info()
+                
+            if self.capture_source_lines and event in ("call", "exception"):
+                event_info["source_line"] = self._get_source_line(frame)
+            
+            # Add event-specific data with enhancements
             if event == "exception":
-                exc_type, exc_val, exc_tb = arg
-                event_info["exception"] = {
-                    "type": exc_type.__name__,
-                    "msg": self._safe_repr(exc_val, 500),
-                    "traceback": traceback.format_exception(
-                        exc_type, exc_val, exc_tb
-                    )[-5:]  # Last 5 frames only
-                }
+                event_info.update(self._handle_exception_event(frame, arg))
             elif event == "call":
-                event_info["locals"] = self._capture_locals(frame)
-            elif event == "return" and arg is not None:
-                event_info["return_value"] = self._safe_repr(arg)
+                event_info.update(self._handle_call_event(frame))
+            elif event == "return":
+                event_info.update(self._handle_return_event(frame, arg))
                 
             # Queue the event
             self.queue.push(event_info)
@@ -255,11 +286,232 @@ class RuntimeInstrumentation:
             except Exception:
                 pass
 
+    def _handle_exception_event(self, frame, exc_info) -> Dict[str, Any]:
+        """Handle exception events with enhanced context."""
+        exc_type, exc_val, exc_tb = exc_info
+        
+        exception_data = {
+            "exception": {
+                "type": exc_type.__name__,
+                "msg": self._safe_repr(exc_val, 500),
+                "traceback": traceback.format_exception(exc_type, exc_val, exc_tb)[-5:]
+            },
+            "locals": self._capture_locals(frame)
+        }
+        
+        # Add call stack context if available
+        if self.capture_call_patterns and hasattr(self, 'call_stack'):
+            exception_data["call_stack_depth"] = len(self.call_stack)
+            exception_data["recent_calls"] = [call["func"] for call in self.call_stack[-5:]]
+            
+        return exception_data
+    
+    def _handle_call_event(self, frame) -> Dict[str, Any]:
+        """Handle function call events with performance and pattern tracking."""
+        func_name = frame.f_code.co_name
+        call_data = {
+            "locals": self._capture_locals(frame)
+        }
+        
+        # Performance and pattern tracking
+        if self.capture_performance or self.capture_call_patterns:
+            self.function_call_counts[func_name] += 1
+            
+            # Track call stack for performance measurement
+            if self.capture_performance:
+                import time
+                call_info = {
+                    "func": func_name,
+                    "start_time": time.perf_counter(),
+                    "frame_id": id(frame)
+                }
+                self.call_stack.append(call_info)
+            
+            # Add call frequency information
+            call_data["call_count"] = self.function_call_counts[func_name]
+            
+            # Detect patterns
+            if self.capture_call_patterns:
+                call_data.update(self._detect_call_patterns(func_name, frame))
+        
+        # Enhanced function metadata
+        call_data.update({
+            "arg_count": frame.f_code.co_argcount,
+            "local_count": frame.f_code.co_nlocals,
+            "has_varargs": bool(frame.f_code.co_flags & 0x04),
+            "has_kwargs": bool(frame.f_code.co_flags & 0x08),
+        })
+        
+        return call_data
+    
+    def _handle_return_event(self, frame, return_value) -> Dict[str, Any]:
+        """Handle function return events with performance analysis."""
+        func_name = frame.f_code.co_name
+        return_data = {}
+        
+        # Capture return value if enabled
+        if self.capture_returns and return_value is not None:
+            return_data["return_value"] = self._safe_repr(return_value)
+            return_data["return_type"] = type(return_value).__name__
+            
+            # Analyze return value patterns
+            return_data.update(self._analyze_return_value(return_value))
+        
+        # Performance tracking
+        if self.capture_performance and hasattr(self, 'call_stack') and self.call_stack:
+            # Find matching call in stack
+            for i, call_info in enumerate(reversed(self.call_stack)):
+                if call_info["func"] == func_name:
+                    # Calculate execution time
+                    import time
+                    execution_time = time.perf_counter() - call_info["start_time"]
+                    
+                    # Remove from call stack
+                    self.call_stack.pop(len(self.call_stack) - 1 - i)
+                    
+                    # Add performance data
+                    return_data.update({
+                        "execution_time_ms": execution_time * 1000,
+                        "is_slow": execution_time > self.slow_function_threshold
+                    })
+                    
+                    # Track function timing statistics
+                    self.function_timings[func_name].append(execution_time)
+                    if len(self.function_timings[func_name]) > 1:
+                        timings = self.function_timings[func_name]
+                        return_data["avg_execution_time_ms"] = (sum(timings) / len(timings)) * 1000
+                        return_data["execution_count"] = len(timings)
+                    
+                    # Detect performance anomalies
+                    if execution_time > self.slow_function_threshold:
+                        return_data["performance_alert"] = {
+                            "type": "slow_function",
+                            "severity": "high" if execution_time > (self.slow_function_threshold * 10) else "medium"
+                        }
+                    
+                    break
+        
+        return return_data
+    
+    def _detect_call_patterns(self, func_name, frame) -> Dict[str, Any]:
+        """Detect interesting call patterns."""
+        patterns = {}
+        
+        # Detect recursive calls
+        if hasattr(self, 'call_stack'):
+            recursive_count = sum(1 for call in self.call_stack if call["func"] == func_name)
+            if recursive_count > 0:
+                patterns["is_recursive"] = True
+                patterns["recursion_depth"] = recursive_count
+        
+        # Detect hot path functions
+        if self.function_call_counts[func_name] > self.hot_path_threshold:
+            patterns["is_hot_path"] = True
+            
+        # Detect first-time function calls
+        if self.function_call_counts[func_name] == 1:
+            patterns["is_first_call"] = True
+            
+        return patterns
+    
+    def _analyze_return_value(self, value) -> Dict[str, Any]:
+        """Analyze return value for patterns."""
+        analysis = {}
+        
+        try:
+            # Basic type analysis
+            value_type = type(value).__name__
+            analysis["return_analysis"] = {"type": value_type}
+            
+            # Pattern detection
+            if value is None:
+                analysis["return_analysis"]["pattern"] = "null_return"
+            elif isinstance(value, bool):
+                analysis["return_analysis"]["pattern"] = "boolean_return"
+                analysis["return_analysis"]["value"] = value
+            elif isinstance(value, (list, tuple)) and len(value) == 0:
+                analysis["return_analysis"]["pattern"] = "empty_collection"
+            elif isinstance(value, dict) and not value:
+                analysis["return_analysis"]["pattern"] = "empty_dict"
+            elif isinstance(value, (int, float)) and value == 0:
+                analysis["return_analysis"]["pattern"] = "zero_return"
+            elif isinstance(value, str) and value == "":
+                analysis["return_analysis"]["pattern"] = "empty_string"
+            
+            # Size analysis for collections
+            if hasattr(value, '__len__'):
+                try:
+                    length = len(value)
+                    analysis["return_analysis"]["length"] = length
+                    if length > 1000:
+                        analysis["return_analysis"]["size_warning"] = "large_collection"
+                except:
+                    pass
+                    
+        except Exception:
+            analysis["return_analysis"] = {"type": "unknown", "error": "analysis_failed"}
+            
+        return analysis
+    
+    def _capture_memory_info(self) -> Dict[str, Any]:
+        """Capture current memory usage information."""
+        if not self.capture_memory or not hasattr(self, 'process'):
+            return {}
+            
+        try:
+            memory_info = self.process.memory_info()
+            memory_data = {
+                "rss": memory_info.rss,  # Resident Set Size
+                "vms": memory_info.vms,  # Virtual Memory Size
+                "percent": self.process.memory_percent()
+            }
+            
+            # Calculate memory delta
+            if self._last_memory is not None:
+                memory_data["delta"] = memory_info.rss - self._last_memory
+            self._last_memory = memory_info.rss
+            
+            return memory_data
+        except Exception:
+            return {"error": "memory_capture_failed"}
+    
+    def _get_source_line(self, frame) -> str:
+        """Get the source code line being executed."""
+        try:
+            import linecache
+            source_line = linecache.getline(frame.f_code.co_filename, frame.f_lineno)
+            return source_line.strip() if source_line else "<source unavailable>"
+        except Exception:
+            return "<source unavailable>"
+    
     def get_stats(self) -> Dict[str, Any]:
         """Get instrumentation statistics."""
-        return {
+        stats = {
             "active": self._active,
             "event_count": self._event_count,
             "sample_rate": self.sample_rate,
             "config": self._config.copy()
         }
+        
+        # Add performance statistics if enabled
+        if self.capture_performance and hasattr(self, 'function_call_counts'):
+            stats["performance"] = {
+                "total_function_calls": sum(self.function_call_counts.values()),
+                "unique_functions": len(self.function_call_counts),
+                "hot_functions": {func: count for func, count in self.function_call_counts.items() 
+                                if count > self.hot_path_threshold}
+            }
+            
+            if hasattr(self, 'function_timings'):
+                slow_functions = {}
+                for func, timings in self.function_timings.items():
+                    avg_time = sum(timings) / len(timings) if timings else 0
+                    if avg_time > self.slow_function_threshold:
+                        slow_functions[func] = {
+                            "avg_time_ms": avg_time * 1000,
+                            "call_count": len(timings),
+                            "total_time_ms": sum(timings) * 1000
+                        }
+                stats["performance"]["slow_functions"] = slow_functions
+        
+        return stats

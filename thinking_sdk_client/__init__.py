@@ -29,6 +29,7 @@ from .instrumentation import RuntimeInstrumentation
 from .background_sender import BackgroundSender
 from .event_queue import EventQueue
 from .config import Config
+from .config_loader import ConfigLoader
 
 # Module-level state
 _instrumentation: Optional[RuntimeInstrumentation] = None
@@ -38,19 +39,23 @@ _config: Optional[Config] = None
 
 
 def start(
-    api_key: str, 
-    server_url: str, 
+    api_key: Optional[str] = None, 
+    server_url: Optional[str] = None, 
     config: Optional[Dict[str, Any]] = None,
-    enable_logging: bool = False
+    config_file: Optional[str] = None,
+    enable_logging: Optional[bool] = None
 ) -> None:
     """
     Start ThinkingSDK instrumentation and background sending.
     
     Args:
-        api_key: API key for authentication with ThinkingSDK server
-        server_url: Base URL of the ThinkingSDK server
-        config: Optional configuration dictionary to override defaults
-        enable_logging: Enable logging for debugging (default: False)
+        api_key: API key for authentication (overrides config file)
+        server_url: Base URL of the ThinkingSDK server (overrides config file)
+        config: Optional configuration dictionary (overrides config file)
+        config_file: Path to YAML config file (default: searches for thinkingsdk.yaml)
+        enable_logging: Enable logging for debugging (overrides config file)
+    
+    Priority: function args > config dict > config file > defaults
     
     Raises:
         RuntimeError: If SDK is already started
@@ -59,9 +64,36 @@ def start(
     
     if _sender is not None:
         raise RuntimeError("ThinkingSDK is already started. Call stop() first.")
+    
+    # Load configuration from YAML file
+    config_loader = ConfigLoader(config_file)
+    
+    # Check if SDK is enabled
+    if not config_loader.is_enabled():
+        if enable_logging:
+            logging.info("ThinkingSDK is disabled in configuration")
+        return
+    
+    # Build final configuration (priority: args > config dict > yaml file)
+    final_config = config_loader.config.copy()
+    if config:
+        # Merge user-provided config
+        for key, value in config.items():
+            if isinstance(value, dict) and key in final_config:
+                final_config[key].update(value)
+            else:
+                final_config[key] = value
+    
+    # Override with function arguments if provided
+    if api_key is None:
+        api_key = config_loader.get_api_key()
+    if server_url is None:
+        server_url = config_loader.get("server_url", "http://localhost:8000")
+    if enable_logging is None:
+        enable_logging = config_loader.get("debug", False)
         
     # Initialize configuration
-    _config = Config(config)
+    _config = Config(final_config)
     
     # Set up logging if requested
     if enable_logging or _config.is_logging_enabled():

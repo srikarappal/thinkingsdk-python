@@ -20,6 +20,10 @@ urllib3>=2.0.0
 # Data validation and serialization
 pydantic>=2.5.0
 
+# Configuration management
+pyyaml>=6.0.0
+keyring>=24.0.0  # For secure API key storage
+
 # Testing and development
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
