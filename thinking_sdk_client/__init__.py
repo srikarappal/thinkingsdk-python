@@ -25,11 +25,13 @@ Production-grade ThinkingSDK client. Usage inside user code:
 import logging
 from typing import Dict, Any, Optional
 
+from ._version import __version__, __version_info__
 from .instrumentation import RuntimeInstrumentation
 from .background_sender import BackgroundSender
 from .event_queue import EventQueue
 from .config import Config
 from .config_loader import ConfigLoader
+from .context import context, set_context, clear_context, add_context
 
 # Module-level state
 _instrumentation: Optional[RuntimeInstrumentation] = None
@@ -204,6 +206,8 @@ def is_active() -> bool:
 
 # Expose key classes for advanced usage
 __all__ = [
+    '__version__', '__version_info__',
     'start', 'stop', 'get_stats', 'is_active',
+    'context', 'set_context', 'clear_context', 'add_context',
     'RuntimeInstrumentation', 'BackgroundSender', 'EventQueue', 'Config'
 ]

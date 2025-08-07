@@ -230,6 +230,15 @@ class RuntimeInstrumentation:
                 "line": frame.f_lineno,
             }
             
+            # Add context if available
+            try:
+                from .context import Context
+                current_context = Context.get_current()
+                if current_context:
+                    event_info["context"] = current_context
+            except ImportError:
+                pass
+            
             # Add enhanced context based on configuration
             if self.capture_memory:
                 event_info["memory"] = self._capture_memory_info()
