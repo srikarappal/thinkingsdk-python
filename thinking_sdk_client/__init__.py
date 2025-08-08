@@ -32,12 +32,20 @@ from .event_queue import EventQueue
 from .config import Config
 from .config_loader import ConfigLoader
 from .context import context, set_context, clear_context, add_context
+from .event_deduplicator import EventDeduplicator
+from .pii_scrubber import PIIScrubber
+from .custom_events import BreadcrumbTracker, CustomEventTracker, Timer
+from .enhanced_queue import EnhancedEventQueue
 
 # Module-level state
 _instrumentation: Optional[RuntimeInstrumentation] = None
 _sender: Optional[BackgroundSender] = None
 _queue: Optional[EventQueue] = None
 _config: Optional[Config] = None
+_deduplicator: Optional[EventDeduplicator] = None
+_pii_scrubber: Optional[PIIScrubber] = None
+_breadcrumb_tracker: Optional[BreadcrumbTracker] = None
+_custom_event_tracker: Optional[CustomEventTracker] = None
 
 
 def start(
@@ -107,8 +115,30 @@ def start(
     try:
         # Create components
         _queue = EventQueue(**_config.get_queue_config())
-        _instrumentation = RuntimeInstrumentation(_queue, _config.get_instrumentation_config())
-        _sender = BackgroundSender(_queue, api_key, server_url, _config.get_sender_config())
+        
+        # Create PII scrubber if privacy is enabled
+        global _pii_scrubber
+        privacy_config = final_config.get('privacy', {})
+        if privacy_config.get('sanitize_data', True):
+            _pii_scrubber = PIIScrubber(privacy_config)
+        
+        # Create deduplicator for efficiency
+        global _deduplicator
+        _deduplicator = EventDeduplicator(final_config.get('deduplication', {}))
+        
+        # Create breadcrumb tracker
+        global _breadcrumb_tracker
+        _breadcrumb_tracker = BreadcrumbTracker(max_breadcrumbs=100)
+        
+        # Create custom event tracker
+        global _custom_event_tracker
+        _custom_event_tracker = CustomEventTracker(_queue, _breadcrumb_tracker)
+        
+        # Create enhanced queue that uses deduplicator and PII scrubber
+        enhanced_queue = EnhancedEventQueue(_queue, _deduplicator, _pii_scrubber)
+        
+        _instrumentation = RuntimeInstrumentation(enhanced_queue, _config.get_instrumentation_config())
+        _sender = BackgroundSender(enhanced_queue, api_key, server_url, _config.get_sender_config())
         
         # Start instrumentation and background sender
         _instrumentation.setup_hooks()
@@ -204,10 +234,105 @@ def is_active() -> bool:
     return _sender is not None and _instrumentation is not None
 
 
+def track_event(event_name: str, data: Optional[Dict[str, Any]] = None, level: str = "info") -> None:
+    """
+    Track a custom business event.
+    
+    Args:
+        event_name: Name of the event (e.g., "payment_processed")
+        data: Event data/metadata
+        level: Event level (debug, info, warning, error, critical)
+        
+    Raises:
+        RuntimeError: If SDK is not started
+    """
+    if not _custom_event_tracker:
+        raise RuntimeError("ThinkingSDK is not started. Call start() first.")
+    
+    _custom_event_tracker.track_event(event_name, data, level)
+
+
+def track_metric(metric_name: str, value: float, unit: str = "none", tags: Optional[Dict[str, str]] = None) -> None:
+    """
+    Track a numeric metric.
+    
+    Args:
+        metric_name: Name of the metric
+        value: Numeric value
+        unit: Unit of measurement
+        tags: Additional tags
+        
+    Raises:
+        RuntimeError: If SDK is not started
+    """
+    if not _custom_event_tracker:
+        raise RuntimeError("ThinkingSDK is not started. Call start() first.")
+    
+    _custom_event_tracker.track_metric(metric_name, value, unit, tags)
+
+
+def add_breadcrumb(message: str, category: str = "default", level: str = "info", data: Optional[Dict[str, Any]] = None) -> None:
+    """
+    Add a breadcrumb to the trail.
+    
+    Args:
+        message: Breadcrumb message
+        category: Category (navigation, http, console, user, etc.)
+        level: Severity level
+        data: Additional data
+        
+    Raises:
+        RuntimeError: If SDK is not started
+    """
+    if not _custom_event_tracker:
+        raise RuntimeError("ThinkingSDK is not started. Call start() first.")
+    
+    _custom_event_tracker.add_breadcrumb(message, category, level, data)
+
+
+def mark_feature_usage(feature_name: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+    """
+    Track feature usage for product analytics.
+    
+    Args:
+        feature_name: Name of the feature
+        metadata: Additional metadata
+        
+    Raises:
+        RuntimeError: If SDK is not started
+    """
+    if not _custom_event_tracker:
+        raise RuntimeError("ThinkingSDK is not started. Call start() first.")
+    
+    _custom_event_tracker.mark_feature_usage(feature_name, metadata)
+
+
+def timer(operation_name: str, tags: Optional[Dict[str, str]] = None):
+    """
+    Create a timer context manager for timing operations.
+    
+    Args:
+        operation_name: Name of the operation to time
+        tags: Additional tags
+        
+    Returns:
+        Timer context manager
+        
+    Example:
+        with thinking.timer("database_query"):
+            results = db.query("SELECT * FROM users")
+    """
+    if not _custom_event_tracker:
+        raise RuntimeError("ThinkingSDK is not started. Call start() first.")
+    
+    return Timer(_custom_event_tracker, operation_name, tags)
+
+
 # Expose key classes for advanced usage
 __all__ = [
     '__version__', '__version_info__',
     'start', 'stop', 'get_stats', 'is_active',
     'context', 'set_context', 'clear_context', 'add_context',
+    'track_event', 'track_metric', 'add_breadcrumb', 'mark_feature_usage', 'timer',
     'RuntimeInstrumentation', 'BackgroundSender', 'EventQueue', 'Config'
 ]

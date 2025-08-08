@@ -226,7 +226,8 @@ class RuntimeInstrumentation:
                 "thread": threading.current_thread().name,
                 "event": event,
                 "func": frame.f_code.co_name,
-                "file": str(Path(frame.f_code.co_filename).name),  # Just filename
+                "file": str(Path(frame.f_code.co_filename).name),  # Short name for compatibility
+                "file_path": frame.f_code.co_filename,  # Full path for debugging
                 "line": frame.f_lineno,
             }
             
@@ -299,19 +300,47 @@ class RuntimeInstrumentation:
         """Handle exception events with enhanced context."""
         exc_type, exc_val, exc_tb = exc_info
         
+        # Get full traceback for AI analysis
+        full_traceback = traceback.format_exception(exc_type, exc_val, exc_tb)
+        
+        # Extract structured stack trace with full file paths
+        tb_list = traceback.extract_tb(exc_tb)
+        structured_traceback = []
+        for tb_frame in tb_list:
+            structured_traceback.append({
+                "file": tb_frame.filename,
+                "line": tb_frame.lineno,
+                "func": tb_frame.name,
+                "code": tb_frame.line  # Actual line of code
+            })
+        
+        # Get source context around error
+        source_context = self._get_source_context(frame, lines_before=3, lines_after=3)
+        
         exception_data = {
             "exception": {
                 "type": exc_type.__name__,
                 "msg": self._safe_repr(exc_val, 500),
-                "traceback": traceback.format_exception(exc_type, exc_val, exc_tb)[-5:]
+                "traceback": full_traceback,  # Full traceback for analysis
+                "traceback_summary": full_traceback[-5:],  # Last 5 for display
+                "structured_traceback": structured_traceback,  # Structured for processing
+                "source_context": source_context  # Code around error
             },
-            "locals": self._capture_locals(frame)
+            "locals": self._capture_locals(frame),
+            "globals": self._capture_globals(frame)  # Add globals for context
         }
         
         # Add call stack context if available
         if self.capture_call_patterns and hasattr(self, 'call_stack'):
             exception_data["call_stack_depth"] = len(self.call_stack)
-            exception_data["recent_calls"] = [call["func"] for call in self.call_stack[-5:]]
+            exception_data["call_stack"] = [
+                {
+                    "func": call.get("func"),
+                    "file": call.get("file"),
+                    "start_time": call.get("start_time")
+                } 
+                for call in self.call_stack[-10:]  # Last 10 calls
+            ]
             
         return exception_data
     
@@ -331,6 +360,8 @@ class RuntimeInstrumentation:
                 import time
                 call_info = {
                     "func": func_name,
+                    "file": frame.f_code.co_filename,  # Full file path
+                    "line": frame.f_lineno,
                     "start_time": time.perf_counter(),
                     "frame_id": id(frame)
                 }
@@ -492,6 +523,59 @@ class RuntimeInstrumentation:
             return source_line.strip() if source_line else "<source unavailable>"
         except Exception:
             return "<source unavailable>"
+    
+    def _get_source_context(self, frame, lines_before: int = 3, lines_after: int = 3) -> Dict[str, Any]:
+        """Get source code context around the current line."""
+        try:
+            import linecache
+            filename = frame.f_code.co_filename
+            current_line = frame.f_lineno
+            
+            context = {
+                "file": filename,
+                "current_line": current_line,
+                "lines": {}
+            }
+            
+            # Get lines before and after
+            start = max(1, current_line - lines_before)
+            end = current_line + lines_after + 1
+            
+            for line_no in range(start, end):
+                line = linecache.getline(filename, line_no)
+                if line:
+                    # Mark current line
+                    prefix = ">>> " if line_no == current_line else "    "
+                    context["lines"][line_no] = prefix + line.rstrip()
+            
+            return context
+        except Exception:
+            return {"error": "Could not get source context"}
+    
+    def _capture_globals(self, frame) -> Dict[str, str]:
+        """Safely capture global variables from a frame."""
+        try:
+            globals_dict = {}
+            
+            # Only capture non-builtin globals
+            for key, value in frame.f_globals.items():
+                # Skip builtins and modules
+                if key.startswith('__') or isinstance(value, type(os)):
+                    continue
+                    
+                # Skip functions and classes (too verbose)
+                if callable(value) and not isinstance(value, (str, int, float, bool)):
+                    continue
+                    
+                # Limit number of globals
+                if len(globals_dict) >= self.max_locals:
+                    break
+                    
+                globals_dict[key] = self._safe_repr(value)
+                
+            return globals_dict
+        except Exception:
+            return {}
     
     def get_stats(self) -> Dict[str, Any]:
         """Get instrumentation statistics."""

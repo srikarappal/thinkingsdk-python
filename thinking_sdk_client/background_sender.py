@@ -3,6 +3,7 @@ import json
 import time
 import logging
 import threading
+import gzip
 from typing import Dict, List, Any, Optional
 from urllib.parse import urljoin
 import requests
@@ -56,6 +57,11 @@ class BackgroundSender:
         self._total_sent = 0
         self._total_failed = 0
         
+        # Session-based auth
+        self._session_token = None
+        self._session_expires_at = 0
+        self._customer_id = None
+        
     def start(self) -> None:
         """Start the background sender thread."""
         if not self._thread.is_alive():
@@ -99,9 +105,8 @@ class BackgroundSender:
         session.mount("http://", adapter)
         session.mount("https://", adapter)
         
-        # Set default headers
+        # Set default headers (no API key here - use session token instead)
         session.headers.update({
-            "X-THINKINGSDK-KEY": self.api_key,
             "Content-Type": "application/json",
             "User-Agent": "ThinkingSDK-Client/1.0"
         })
@@ -124,6 +129,44 @@ class BackgroundSender:
             return False
             
         return True
+    
+    def _ensure_session(self, session: requests.Session) -> bool:
+        """Ensure we have a valid session token.
+        
+        Returns:
+            True if session is valid, False otherwise
+        """
+        # Check if session is still valid
+        if hasattr(self, '_session_token') and self._session_token and time.time() < self._session_expires_at - 60:
+            return True
+            
+        try:
+            # Create new session
+            url = urljoin(self.server_url + "/", "auth/session")
+            response = session.post(
+                url,
+                json={"api_key": self.api_key},
+                timeout=self.request_timeout
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                self._session_token = data.get("session_token")
+                self._session_expires_at = time.time() + data.get("expires_in", 3600)
+                self._customer_id = data.get("customer_id")
+                
+                # Update session headers with token
+                session.headers["X-Session-Token"] = self._session_token
+                
+                logging.debug(f"ThinkingSDK: New session created for customer {self._customer_id}")
+                return True
+            else:
+                logging.warning(f"ThinkingSDK: Session creation failed: {response.status_code}")
+                return False
+                
+        except Exception as e:
+            logging.warning(f"ThinkingSDK: Session creation error: {e}")
+            return False
         
     def _send_batch(self, session: requests.Session, events: List[Dict[str, Any]]) -> bool:
         """Send a batch of events to the server.
@@ -137,47 +180,76 @@ class BackgroundSender:
         """
         if self._is_circuit_open():
             return False
+        
+        # Ensure we have a valid session
+        if not self._ensure_session(session):
+            logging.warning("ThinkingSDK: Failed to get session token")
+            return False
             
         try:
             url = urljoin(self.server_url + "/", "ingest")
             
-            # For batch sending, we'll send events one by one for now
-            # In production, server should support batch endpoint
-            success_count = 0
+            # Prepare batch payload
+            batch_data = json.dumps({"events": events})
             
-            for event in events:
-                try:
-                    response = session.post(
-                        url,
-                        data=json.dumps(event),
-                        timeout=self.request_timeout
-                    )
-                    
-                    if response.status_code == 200:
-                        success_count += 1
-                    elif response.status_code == 401:
-                        # Authentication error - no point in retrying
-                        logging.warning("ThinkingSDK: Authentication failed, check API key")
-                        return False
-                    else:
-                        # Other errors will be handled by retry logic
-                        logging.debug(f"ThinkingSDK: HTTP {response.status_code}: {response.text}")
-                        
-                except requests.exceptions.Timeout:
-                    logging.debug("ThinkingSDK: Request timeout")
-                except requests.exceptions.ConnectionError:
-                    logging.debug("ThinkingSDK: Connection error")
-                except Exception as e:
-                    logging.debug(f"ThinkingSDK: Unexpected error: {e}")
-                    
-            # Consider batch successful if majority of events were sent
-            if success_count > len(events) * 0.5:
-                self._consecutive_failures = 0
-                self._total_sent += success_count
-                return True
+            # Compress if large
+            headers = {}
+            if len(batch_data) > getattr(self, 'compress_threshold', 1024):
+                batch_data = gzip.compress(batch_data.encode('utf-8'))
+                headers['Content-Encoding'] = 'gzip'
+                logging.debug(f"ThinkingSDK: Compressed {len(events)} events")
             else:
+                batch_data = batch_data.encode('utf-8')
+            
+            # Send batch
+            try:
+                response = session.post(
+                    url,
+                    data=batch_data,
+                    headers=headers,
+                    timeout=self.request_timeout
+                )
+                
+                if response.status_code == 200:
+                    self._consecutive_failures = 0
+                    self._total_sent += len(events)
+                    return True
+                elif response.status_code == 401:
+                    # Session expired or invalid - clear and retry once
+                    self._session_token = None
+                    self._session_expires_at = 0
+                    
+                    if self._ensure_session(session):
+                        # Retry with new session
+                        response = session.post(
+                            url,
+                            data=batch_data,
+                            headers=headers,
+                            timeout=self.request_timeout
+                        )
+                        if response.status_code == 200:
+                            self._consecutive_failures = 0
+                            self._total_sent += len(events)
+                            return True
+                    
+                    logging.warning("ThinkingSDK: Authentication failed")
+                    return False
+                else:
+                    # Other errors
+                    logging.debug(f"ThinkingSDK: HTTP {response.status_code}")
+                    self._consecutive_failures += 1
+                    self._total_failed += len(events)
+                    return False
+                    
+            except requests.exceptions.Timeout:
+                logging.debug("ThinkingSDK: Request timeout")
                 self._consecutive_failures += 1
-                self._total_failed += len(events) - success_count
+                self._total_failed += len(events)
+                return False
+            except requests.exceptions.ConnectionError:
+                logging.debug("ThinkingSDK: Connection error")
+                self._consecutive_failures += 1
+                self._total_failed += len(events)
                 return False
                 
         except Exception as e:
