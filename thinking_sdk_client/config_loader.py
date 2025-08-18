@@ -20,6 +20,7 @@ class ConfigLoader:
         "api_key_source": "env:THINKINGSDK_API_KEY",
         "server_url": "http://localhost:8000",
         "environment": "development",
+        "git_repositories": [],
         "tracking": {
             "mode": "manual",
             "include_modules": [],

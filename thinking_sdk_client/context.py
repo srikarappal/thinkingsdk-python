@@ -10,6 +10,7 @@ Usage:
     thinking.set_context({"environment": "production", "version": "1.2.3"})
 """
 
+import asyncio
 import contextvars
 import threading
 import uuid
@@ -276,7 +277,3 @@ def inject_to_headers(headers: Dict[str, str]) -> None:
     
     if 'user_id' in current:
         headers[USER_HEADER_NAME] = str(current['user_id'])
-
-
-import asyncio
-import sys

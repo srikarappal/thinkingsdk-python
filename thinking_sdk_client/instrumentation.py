@@ -8,6 +8,13 @@ import re
 from typing import Any, Dict, Optional, Set, Callable
 from pathlib import Path
 
+try:
+    from .strategic_sampling import StrategicSampler, RemoteConfigManager
+except ImportError:
+    # Fallback if strategic sampling not available
+    StrategicSampler = None
+    RemoteConfigManager = None
+
 
 class RuntimeInstrumentation:
     """Production-grade runtime instrumentation with filtering and safety features.
@@ -33,7 +40,7 @@ class RuntimeInstrumentation:
         '__getattr__', '__setattr__', '__getitem__', '__setitem__'
     }
     
-    def __init__(self, queue, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, queue, config: Optional[Dict[str, Any]] = None, api_client=None):
         """
         Args:
             queue: EventQueue instance for buffering events
@@ -51,15 +58,37 @@ class RuntimeInstrumentation:
                 - ignore_patterns: Additional regex patterns to ignore
                 - ignore_functions: Additional function names to ignore
                 - sample_rate: Fraction of events to capture (default: 1.0)
+                - strategic_sampling: Strategic sampling configuration
+            api_client: Optional API client for remote configuration updates
         """
         self.queue = queue
         self._config = config or {}
+        self.api_client = api_client
         
         # Basic configuration settings
-        self.max_locals = self._config.get('max_locals', 5)
+        self.max_locals = self._config.get('max_locals', 9)
         self.max_local_length = self._config.get('max_local_length', 120)
         self.capture_returns = self._config.get('capture_returns', False)
         self.sample_rate = self._config.get('sample_rate', 1.0)
+        
+        # Initialize strategic sampling
+        strategic_config = self._config.get('strategic_sampling', {})
+        self.strategic_sampling_enabled = strategic_config.get('enabled', True)
+        
+        if self.strategic_sampling_enabled and StrategicSampler:
+            self.strategic_sampler = StrategicSampler(strategic_config)
+            
+            # Initialize remote config manager if enabled
+            if strategic_config.get('remote_config_enabled') and RemoteConfigManager:
+                self.remote_config_manager = RemoteConfigManager(
+                    api_client=api_client,
+                    poll_interval_seconds=strategic_config.get('remote_config_poll_interval', 300)
+                )
+            else:
+                self.remote_config_manager = None
+        else:
+            self.strategic_sampler = None
+            self.remote_config_manager = None
         
         # Enhanced tracking configuration
         self.capture_performance = self._config.get('capture_performance', True)
@@ -149,11 +178,10 @@ class RuntimeInstrumentation:
         for pattern in self.ignore_patterns:
             if pattern.search(filename):
                 return True
-                
         return False
         
     def _should_sample(self) -> bool:
-        """Determine if this event should be sampled."""
+        """Determine if this event should be sampled (fallback method)."""
         if self.sample_rate >= 1.0:
             return True
         if self.sample_rate <= 0.0:
@@ -161,6 +189,21 @@ class RuntimeInstrumentation:
             
         self._event_count += 1
         return (self._event_count * self.sample_rate) % 1.0 >= 0.5
+    
+    def _should_capture_event(self, event_info: Dict[str, Any]) -> bool:
+        """Determine if event should be captured using strategic sampling."""
+        # Check for remote config updates first
+        if self.remote_config_manager:
+            remote_config = self.remote_config_manager.get_remote_config()
+            if remote_config:
+                self.strategic_sampler.update_config(remote_config)
+        
+        # Use strategic sampling if enabled
+        if self.strategic_sampling_enabled and self.strategic_sampler:
+            return self.strategic_sampler.should_capture_event(event_info)
+        
+        # Fallback to traditional sampling
+        return self._should_sample()
         
     def _safe_repr(self, value: Any, max_length: int = None) -> str:
         """Safely convert a value to string representation."""
@@ -176,9 +219,7 @@ class RuntimeInstrumentation:
             # Truncate if too long
             if len(repr_str) > max_length:
                 return repr_str[:max_length-3] + '...'
-                
             return repr_str
-            
         except Exception:
             return f"<{type(value).__name__} (repr failed)>"
             
@@ -192,11 +233,8 @@ class RuntimeInstrumentation:
                 # Skip private/internal variables
                 if key.startswith('_'):
                     continue
-                    
                 locals_dict[key] = self._safe_repr(value)
-                
             return locals_dict
-            
         except Exception:
             return {}
             
@@ -216,10 +254,7 @@ class RuntimeInstrumentation:
             if self._should_ignore_frame(frame):
                 return self._trace_calls
                 
-            if not self._should_sample():
-                return self._trace_calls
-                
-            # Build base event info
+            # Build base event info for strategic sampling decision
             event_info = {
                 "ts": time.time(),
                 "pid": os.getpid(),
@@ -230,6 +265,18 @@ class RuntimeInstrumentation:
                 "file_path": frame.f_code.co_filename,  # Full path for debugging
                 "line": frame.f_lineno,
             }
+            
+            # Add execution time for strategic sampling decision (if available from return event)
+            if event == "return" and hasattr(self, 'call_stack') and self.call_stack:
+                for call_info in reversed(self.call_stack):
+                    if call_info["func"] == frame.f_code.co_name:
+                        execution_time = time.perf_counter() - call_info["start_time"]
+                        event_info["execution_time_ms"] = execution_time * 1000
+                        break
+            
+            # Strategic sampling decision
+            if not self._should_capture_event(event_info):
+                return self._trace_calls
             
             # Add context if available
             try:
@@ -257,12 +304,118 @@ class RuntimeInstrumentation:
                 
             # Queue the event
             self.queue.push(event_info)
-            
         except Exception:
             # Never let instrumentation break user code
             pass
-            
         return self._trace_calls
+    
+    def _assess_exception_severity_and_impact(self, exception_type: str, exception_message: str, 
+                                            frame) -> Dict[str, Any]:
+        """Assess exception severity and business impact from runtime context."""
+        
+        # Get function and file context
+        func_name = frame.f_code.co_name.lower()
+        file_path = frame.f_code.co_filename.lower()
+        
+        # Assess business impact based on function/file context
+        business_impact = self._assess_business_impact(func_name, file_path, frame)
+        
+        # Determine severity based on exception type and business context
+        severity = self._calculate_exception_severity(exception_type, business_impact, exception_message)
+        
+        # Get strategic sampling priority (already calculated by strategic sampler)
+        priority = 'ALWAYS'  # Exceptions are always high priority in strategic sampling
+        if self.strategic_sampling_enabled and self.strategic_sampler:
+            # Strategic sampler determines if this should be captured
+            priority = self.strategic_sampler._classify_event_priority({
+                'event': 'exception',
+                'func': func_name,
+                'file_path': file_path
+            })
+        
+        return {
+            "severity": severity,
+            "business_impact": business_impact,
+            "priority": priority.name if hasattr(priority, 'name') else str(priority),
+            "fix_urgency": self._calculate_fix_urgency(severity, business_impact)
+        }
+    
+    def _assess_business_impact(self, func_name: str, file_path: str, frame) -> str:
+        """Assess business impact from runtime context."""
+        
+        # High business impact indicators
+        high_impact_keywords = [
+            'payment', 'checkout', 'billing', 'order', 'purchase', 'transaction',
+            'login', 'auth', 'signup', 'register', 'security', 'password',
+            'api', 'database', 'db', 'sql', 'query', 'connection',
+            'user', 'customer', 'account', 'profile', 'subscription'
+        ]
+        
+        # Check function name and file path for business context
+        context_text = f"{func_name} {file_path}".lower()
+        
+        if any(keyword in context_text for keyword in high_impact_keywords):
+            return 'high'
+        
+        # Check local variables for business entities
+        try:
+            locals_dict = frame.f_locals
+            for var_name, var_value in locals_dict.items():
+                var_name_lower = var_name.lower()
+                if any(keyword in var_name_lower for keyword in high_impact_keywords):
+                    return 'high'
+                
+                # Check if variable contains business-critical data
+                var_str = str(var_value).lower()
+                if any(keyword in var_str for keyword in ['user_id', 'customer_id', 'order_id', 'payment_id']):
+                    return 'high'
+        except:
+            pass
+        
+        return 'medium'
+    
+    def _calculate_exception_severity(self, exception_type: str, business_impact: str, 
+                                    exception_message: str) -> str:
+        """Calculate exception severity based on type, business impact, and context."""
+        
+        # Critical exceptions (code structure issues)
+        critical_exceptions = [
+            'SyntaxError', 'NameError', 'ImportError', 'ModuleNotFoundError'
+        ]
+        
+        # High priority exceptions (runtime issues)  
+        high_exceptions = [
+            'AttributeError', 'TypeError', 'ValueError', 'KeyError', 
+            'IndexError', 'ZeroDivisionError', 'FileNotFoundError'
+        ]
+        
+        if exception_type in critical_exceptions:
+            return 'critical'
+        
+        if exception_type in high_exceptions:
+            if business_impact == 'high':
+                return 'critical'  # High business impact elevates severity
+            return 'high'
+        
+        # Business impact can elevate any exception
+        if business_impact == 'high':
+            return 'high'
+        
+        return 'medium'
+    
+    def _calculate_fix_urgency(self, severity: str, business_impact: str) -> str:
+        """Calculate how urgently this needs to be fixed."""
+        
+        if severity == 'critical':
+            return 'immediate'  # Fix within minutes
+        
+        if severity == 'high' and business_impact == 'high':
+            return 'urgent'     # Fix within hours
+        
+        if severity == 'high':
+            return 'high'       # Fix within day
+        
+        return 'normal'         # Fix in next sprint
         
     def _thread_exception_handler(self, args) -> None:
         """Handle exceptions in threads."""
@@ -283,9 +436,7 @@ class RuntimeInstrumentation:
                     )[-5:]  # Last 5 frames only
                 },
             }
-            
             self.queue.push(exc_info)
-            
         except Exception:
             pass
             
@@ -303,16 +454,34 @@ class RuntimeInstrumentation:
         # Get full traceback for AI analysis
         full_traceback = traceback.format_exception(exc_type, exc_val, exc_tb)
         
-        # Extract structured stack trace with full file paths
+        # Extract structured stack trace with full file paths and variable context
         tb_list = traceback.extract_tb(exc_tb)
         structured_traceback = []
-        for tb_frame in tb_list:
+        
+        # Walk the traceback to capture variables at each frame
+        current_tb = exc_tb
+        tb_index = 0
+        while current_tb and tb_index < len(tb_list):
+            tb_frame_info = tb_list[tb_index]
+            frame_obj = current_tb.tb_frame
+            
+            # Capture all local and global variables for this frame
+            frame_locals = self._capture_all_frame_variables(frame_obj.f_locals, 'locals')
+            frame_globals = self._capture_all_frame_variables(frame_obj.f_globals, 'globals')
+            
             structured_traceback.append({
-                "file": tb_frame.filename,
-                "line": tb_frame.lineno,
-                "func": tb_frame.name,
-                "code": tb_frame.line  # Actual line of code
+                "file": tb_frame_info.filename,
+                "file_path": tb_frame_info.filename,  # Full path for auto-fix
+                "line": tb_frame_info.lineno,
+                "func": tb_frame_info.name,
+                "code": tb_frame_info.line,  # Actual line of code
+                "locals": frame_locals,  # All local variables in this frame
+                "globals": frame_globals,  # Relevant global variables in this frame
+                "frame_index": tb_index
             })
+            
+            current_tb = current_tb.tb_next
+            tb_index += 1
         
         # Get source context around error
         source_context = self._get_source_context(frame, lines_before=3, lines_after=3)
@@ -320,7 +489,7 @@ class RuntimeInstrumentation:
         exception_data = {
             "exception": {
                 "type": exc_type.__name__,
-                "msg": self._safe_repr(exc_val, 500),
+                "message": str(exc_val),  # Use 'message' instead of 'msg' for consistency
                 "traceback": full_traceback,  # Full traceback for analysis
                 "traceback_summary": full_traceback[-5:],  # Last 5 for display
                 "structured_traceback": structured_traceback,  # Structured for processing
@@ -329,6 +498,11 @@ class RuntimeInstrumentation:
             "locals": self._capture_locals(frame),
             "globals": self._capture_globals(frame)  # Add globals for context
         }
+        
+        # Add client-side severity and business impact assessment
+        exception_data.update(self._assess_exception_severity_and_impact(
+            exc_type.__name__, str(exc_val), frame
+        ))
         
         # Add call stack context if available
         if self.capture_call_patterns and hasattr(self, 'call_stack'):
@@ -341,7 +515,20 @@ class RuntimeInstrumentation:
                 } 
                 for call in self.call_stack[-10:]  # Last 10 calls
             ]
-            
+        
+        # Add git repository context for auto-fix
+        git_repositories = self._config.get('git_repositories', [])
+        if git_repositories:
+            exception_data["repository_context"] = {
+                "git_repositories": git_repositories,
+                "auto_fix_enabled": True
+            }
+        else:
+            exception_data["repository_context"] = {
+                "git_repositories": [],
+                "auto_fix_enabled": False
+            }
+        
         return exception_data
     
     def _handle_call_event(self, frame) -> Dict[str, Any]:
@@ -381,7 +568,6 @@ class RuntimeInstrumentation:
             "has_varargs": bool(frame.f_code.co_flags & 0x04),
             "has_kwargs": bool(frame.f_code.co_flags & 0x08),
         })
-        
         return call_data
     
     def _handle_return_event(self, frame, return_value) -> Dict[str, Any]:
@@ -430,7 +616,6 @@ class RuntimeInstrumentation:
                         }
                     
                     break
-        
         return return_data
     
     def _detect_call_patterns(self, func_name, frame) -> Dict[str, Any]:
@@ -451,7 +636,6 @@ class RuntimeInstrumentation:
         # Detect first-time function calls
         if self.function_call_counts[func_name] == 1:
             patterns["is_first_call"] = True
-            
         return patterns
     
     def _analyze_return_value(self, value) -> Dict[str, Any]:
@@ -487,17 +671,15 @@ class RuntimeInstrumentation:
                         analysis["return_analysis"]["size_warning"] = "large_collection"
                 except:
                     pass
-                    
         except Exception:
-            analysis["return_analysis"] = {"type": "unknown", "error": "analysis_failed"}
-            
+            analysis["return_analysis"] = {"type": "unknown", "error": "analysis_failed"}            
         return analysis
     
     def _capture_memory_info(self) -> Dict[str, Any]:
         """Capture current memory usage information."""
         if not self.capture_memory or not hasattr(self, 'process'):
             return {}
-            
+
         try:
             memory_info = self.process.memory_info()
             memory_data = {
@@ -510,7 +692,6 @@ class RuntimeInstrumentation:
             if self._last_memory is not None:
                 memory_data["delta"] = memory_info.rss - self._last_memory
             self._last_memory = memory_info.rss
-            
             return memory_data
         except Exception:
             return {"error": "memory_capture_failed"}
@@ -547,10 +728,46 @@ class RuntimeInstrumentation:
                     # Mark current line
                     prefix = ">>> " if line_no == current_line else "    "
                     context["lines"][line_no] = prefix + line.rstrip()
-            
             return context
         except Exception:
             return {"error": "Could not get source context"}
+    
+    def _capture_all_frame_variables(self, variables_dict: Dict, var_type: str) -> Dict[str, Any]:
+        """Capture all relevant variables from a frame without PII filtering (as requested)."""
+        try:
+            captured = {}
+            
+            for key, value in variables_dict.items():
+                # Skip private Python internals but keep everything else
+                if var_type == 'globals' and (
+                    key.startswith('__builtins__') or 
+                    key in ('__name__', '__file__', '__package__', '__loader__', '__spec__')
+                ):
+                    continue
+                
+                # For locals, capture everything including private vars (debugging needs all context)
+                if var_type == 'locals' or not key.startswith('__'):
+                    try:
+                        # Capture with type information for better Claude analysis
+                        captured[key] = {
+                            'value': self._safe_repr(value, max_length=1000),  # Longer for debugging
+                            'type': type(value).__name__,
+                            'repr': repr(value)[:500] if hasattr(value, '__repr__') else str(type(value))
+                        }
+                    except Exception:
+                        captured[key] = {
+                            'value': '<capture_failed>',
+                            'type': 'unknown',
+                            'repr': '<repr_failed>'
+                        }
+                
+                # Limit total variables to prevent excessive data
+                if len(captured) >= 50:  # Higher limit for debugging
+                    break
+                    
+            return captured
+        except Exception:
+            return {}
     
     def _capture_globals(self, frame) -> Dict[str, str]:
         """Safely capture global variables from a frame."""
@@ -572,7 +789,6 @@ class RuntimeInstrumentation:
                     break
                     
                 globals_dict[key] = self._safe_repr(value)
-                
             return globals_dict
         except Exception:
             return {}
@@ -583,8 +799,13 @@ class RuntimeInstrumentation:
             "active": self._active,
             "event_count": self._event_count,
             "sample_rate": self.sample_rate,
-            "config": self._config.copy()
+            "config": self._config.copy(),
+            "strategic_sampling_enabled": self.strategic_sampling_enabled
         }
+        
+        # Add strategic sampling statistics
+        if self.strategic_sampling_enabled and self.strategic_sampler:
+            stats["strategic_sampling"] = self.strategic_sampler.get_sampling_stats()
         
         # Add performance statistics if enabled
         if self.capture_performance and hasattr(self, 'function_call_counts'):
@@ -606,5 +827,15 @@ class RuntimeInstrumentation:
                             "total_time_ms": sum(timings) * 1000
                         }
                 stats["performance"]["slow_functions"] = slow_functions
-        
         return stats
+    
+    def mark_custom_event(self, func_name: str) -> None:
+        """Mark the next event from this function as custom/business-critical."""
+        if self.strategic_sampling_enabled and self.strategic_sampler:
+            # This would need to be implemented with frame tracking
+            pass
+    
+    def update_remote_config(self, new_config: Dict[str, Any]) -> None:
+        """Update configuration from remote server."""
+        if self.strategic_sampling_enabled and self.strategic_sampler:
+            self.strategic_sampler.update_config(new_config)

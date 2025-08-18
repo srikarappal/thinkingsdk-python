@@ -7,17 +7,52 @@ api_key_source: "env:THINKINGSDK_API_KEY"  # Required: Points to environment var
 server_url: "${THINKINGSDK_SERVER_URL:-http://localhost:8000}"  # Optional: Override via env var
 environment: "${ENV:-development}"  # Used for filtering in dashboard
 
+# Git Repository Configuration for Auto-Fix
+git_repositories:
+  # List of repositories where auto-fix should be enabled
+  # Format: "https://github.com/username/repository" or "git@github.com:username/repository.git"
+  - "https://github.com/user/my-project"
+  # - "https://github.com/user/another-project"
+  # - "git@github.com:company/private-repo.git"
+  
+  # Optional: If empty, user will be prompted to configure repositories in the dashboard
+
 # Core Behavior
 enabled: true  # Master switch - set to false to disable all tracking
 auto_start: false  # If true, automatically starts tracking on import (not recommended)
-sampling_rate: 1.0  # Fraction of events to capture (1.0 = 100%, 0.1 = 10%)
+sampling_rate: 1.0  # Fraction of events to capture (1.0 = 100%, 0.1 = 10%) - LEGACY, use strategic_sampling instead
+
+# Strategic Sampling for AI-Agentic Debugging
+strategic_sampling:
+  enabled: true  # Enable intelligent filtering for real-time AI analysis
+  environment: "${ENV:-development}"  # development, staging, production, high_scale
+  slow_function_threshold_ms: 100  # Functions slower than this are always captured
+  remote_config_enabled: false  # Enable server-controlled configuration updates
+  remote_config_poll_interval: 300  # Seconds between server config polls
+  
+  # Custom sampling rates (overrides defaults)
+  custom_sampling_rates: {}
+    # development: 1.0    # 100% sampling
+    # staging: 0.5        # 50% sampling  
+    # production: 0.1     # 10% sampling
+    # high_scale: 0.01    # 1% sampling
+  
+  # Custom capture rules (extends defaults)
+  custom_capture_rules: {}
+    # always: ["my_critical_function", "payment_*"]
+    # sample: ["normal_business_logic"]
+    # never: ["my_noisy_library", "debug_*"]
+  
+  # Additional patterns for event classification
+  always_patterns: []  # Patterns that force "always capture"
+  never_patterns: []   # Patterns that force "never capture"
 
 # Tracking Configuration
 tracking:
-  mode: "selective"  # Options: "manual" | "selective" | "all"
+  mode: "all"  # Options: "manual" | "selective" | "all"
   # - manual: Only track functions with @thinking.track decorator
   # - selective: Track based on include/exclude patterns below
-  # - all: Track everything (not recommended for production)
+  # - all: Track everything (too much data, but provides full coverage and insights)
   
   # What to track (selective mode)
   include_modules: []  # Example: ["myapp.core", "myapp.payments"]
@@ -31,18 +66,18 @@ tracking:
     - "venv"
     - "migrations"
   
-  # What data to capture
+  # IMPORTANT!! What data to capture
   capture_locals: true  # Capture local variables in functions
-  capture_returns: false  # Capture function return values
+  capture_returns: true  # Capture function return values
   capture_exceptions: true  # Capture exception details
   capture_performance: true  # Track execution timing
-  capture_memory: false  # Track memory usage (requires psutil)
+  capture_memory: true  # Track memory usage (requires psutil)
   capture_call_patterns: true  # Detect recursion, hot paths
-  capture_source_lines: false  # Include source code lines (verbose)
-  capture_data_flow: false  # Track variable changes over time
+  capture_source_lines: true  # Include source code lines (verbose)
+  capture_data_flow: true  # Track variable changes over time
   
   # Limits
-  max_locals: 10  # Maximum number of local variables to capture
+  max_locals: 25  # Maximum number of local variables to capture
   max_local_length: 500  # Maximum string length for local variable values
   max_stack_depth: 50  # Maximum call stack depth to track
 
@@ -52,7 +87,7 @@ performance:
   hot_path_threshold_calls: 50  # Functions called more than this are "hot paths"
   memory_spike_threshold_mb: 100  # Memory increases above this trigger alerts
 
-# Privacy & Security
+# PII & Privacy & Security
 privacy:
   redact_keys:  # Keys to redact in captured data
     - "password"
@@ -70,7 +105,7 @@ privacy:
 
 # Network & Batching
 export:
-  batch_size: 100  # Number of events to batch before sending
+  batch_size: 9  # Number of events to batch before sending
   flush_interval_seconds: 5  # Maximum time to wait before sending partial batch
   max_queue_size: 10000  # Maximum events to buffer (drops oldest when full)
   timeout_seconds: 10  # HTTP request timeout

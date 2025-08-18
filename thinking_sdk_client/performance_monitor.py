@@ -108,7 +108,7 @@ class PerformanceMonitor:
         # Determine appropriate backoff level
         old_level = self.backoff_level
         
-        if cpu_overhead > self.max_cpu_percent * 2:
+        if cpu_overhead > self.max_cpu_percent * 5:
             self.backoff_level = 3  # Disable
         elif cpu_overhead > self.max_cpu_percent * 1.5:
             self.backoff_level = 2  # Minimal

@@ -11,7 +11,7 @@ plotly>=5.17.0
 pandas>=2.0.0
 
 # AI/LLM integration
-openai>=1.14.0
+claude-code-sdk>=0.0.20
 
 # HTTP client and networking
 requests>=2.31.0

@@ -202,7 +202,6 @@ class PIIScrubber:
                 if pattern_name not in self.stats['patterns_matched']:
                     self.stats['patterns_matched'][pattern_name] = 0
                 self.stats['patterns_matched'][pattern_name] += len(matches)
-                
         return scrubbed
     
     def _redact_value(self, value: Any, reason: str = "") -> str:

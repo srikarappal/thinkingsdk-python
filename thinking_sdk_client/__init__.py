@@ -5,7 +5,7 @@ Production-grade ThinkingSDK client. Usage inside user code:
     import thinking_sdk_client as thinking
     
     # Basic usage
-    thinking.start(api_key="sk_live_XXXX", server_url="http://localhost:8000")
+    thinking.start(api_key="sk_live_XXXX")
     
     # Advanced usage with configuration
     config = {
@@ -13,7 +13,7 @@ Production-grade ThinkingSDK client. Usage inside user code:
         'sender': {'batch_size': 100, 'retry_attempts': 5},
         'queue': {'maxsize': 20000}
     }
-    thinking.start(api_key="sk_live_XXXX", server_url="http://localhost:8000", config=config)
+    thinking.start(api_key="sk_live_XXXX", config=config)
 
     # Get statistics
     stats = thinking.get_stats()
@@ -47,6 +47,11 @@ _pii_scrubber: Optional[PIIScrubber] = None
 _breadcrumb_tracker: Optional[BreadcrumbTracker] = None
 _custom_event_tracker: Optional[CustomEventTracker] = None
 
+#TODO: rethink hard stopping exceptions for all methods (e.g. raise Exceptions)
+# This is a production-grade SDK, so we want to avoid raising exceptions
+# unless absolutely necessary. Most methods will log errors instead of raising.
+# However, some critical methods like start() and stop() will raise if called incorrectly.
+# This should not hinder normal usage, but rather help catch misconfigurations early.
 
 def start(
     api_key: Optional[str] = None, 
@@ -98,7 +103,7 @@ def start(
     if api_key is None:
         api_key = config_loader.get_api_key()
     if server_url is None:
-        server_url = config_loader.get("server_url", "http://localhost:8000")
+        server_url = config_loader.get("server_url", "https://api.thinkingsdk.com")
     if enable_logging is None:
         enable_logging = config_loader.get("debug", False)
         
@@ -111,7 +116,8 @@ def start(
             level=getattr(logging, _config.get_log_level().upper()),
             format='%(asctime)s - ThinkingSDK - %(levelname)s - %(message)s'
         )
-        
+
+    #TODO: is _queue or enhanced_queue both needed? which one should be used?
     try:
         # Create components
         _queue = EventQueue(**_config.get_queue_config())
@@ -156,7 +162,7 @@ def start(
 def stop(timeout: float = 5.0) -> None:
     """
     Stop ThinkingSDK instrumentation and background sending.
-    
+    TODO: empty the queue gracefully before stopping
     Args:
         timeout: Maximum time to wait for graceful shutdown (seconds)
     """

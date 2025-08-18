@@ -26,6 +26,19 @@ class Config:
             'ignore_functions': [],
         },
         
+        # Strategic sampling settings for AI-agentic debugging
+        'strategic_sampling': {
+            'enabled': True,  # Enable intelligent filtering and sampling
+            'environment': 'development',  # development, staging, production, high_scale
+            'slow_function_threshold_ms': 100,  # Functions slower than this are always captured
+            'custom_sampling_rates': {},  # Override default environment sampling rates
+            'custom_capture_rules': {},   # Override default capture rules
+            'always_patterns': [],        # Additional patterns for always capture
+            'never_patterns': [],         # Additional patterns for never capture
+            'remote_config_enabled': False,  # Enable server-controlled configuration
+            'remote_config_poll_interval': 300,  # Seconds between config polls
+        },
+        
         # Background sender settings
         'sender': {
             'batch_size': 50,
@@ -117,6 +130,14 @@ class Config:
     def get_sender_config(self) -> Dict[str, Any]:
         """Get background sender configuration."""
         return self._config['sender'].copy()
+        
+    def get_strategic_sampling_config(self) -> Dict[str, Any]:
+        """Get strategic sampling configuration."""
+        return self._config['strategic_sampling'].copy()
+        
+    def is_strategic_sampling_enabled(self) -> bool:
+        """Check if strategic sampling is enabled."""
+        return self._config.get('strategic_sampling', {}).get('enabled', True)
         
     def is_logging_enabled(self) -> bool:
         """Check if logging is enabled."""
