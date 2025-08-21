@@ -142,8 +142,12 @@ class PIIScrubber:
             
         return obj
     
-    def _is_sensitive_key(self, key: str) -> bool:
+    def _is_sensitive_key(self, key) -> bool:
         """Check if a key name indicates sensitive data."""
+        # Only process string keys - ignore numeric/other key types
+        if not isinstance(key, str):
+            return False
+            
         key_lower = key.lower()
         
         # Check exact matches and substrings
