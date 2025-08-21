@@ -50,6 +50,7 @@ class BackgroundSender:
         # Thread control
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
+        self._session_lock = threading.Lock()  # Prevent concurrent session creation
         
         # State tracking
         self._consecutive_failures = 0
@@ -136,37 +137,51 @@ class BackgroundSender:
         Returns:
             True if session is valid, False otherwise
         """
-        # Check if session is still valid
+        # Check if session is still valid (outside lock for performance)
         if hasattr(self, '_session_token') and self._session_token and time.time() < self._session_expires_at - 60:
             return True
-            
-        try:
-            # Create new session
-            url = urljoin(self.server_url + "/", "auth/session")
-            response = session.post(
-                url,
-                json={"api_key": self.api_key},
-                timeout=self.request_timeout
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                self._session_token = data.get("session_token")
-                self._session_expires_at = time.time() + data.get("expires_in", 3600)
-                self._customer_id = data.get("customer_id")
-                
-                # Update session headers with token
-                session.headers["X-Session-Token"] = self._session_token
-                
-                logging.debug(f"ThinkingSDK: New session created for customer {self._customer_id}")
+        
+        # Use lock to prevent concurrent session creation
+        with self._session_lock:
+            # Double-check pattern: another thread might have created session while we waited
+            if hasattr(self, '_session_token') and self._session_token and time.time() < self._session_expires_at - 60:
                 return True
-            else:
-                logging.warning(f"ThinkingSDK: Session creation failed: {response.status_code}")
-                return False
                 
-        except Exception as e:
-            logging.warning(f"ThinkingSDK: Session creation error: {e}")
-            return False
+            try:
+                # Debug: Log what we're sending
+                logging.debug(f"ThinkingSDK: Creating session with API key: {self.api_key[:20] if self.api_key else 'None'}...")
+                logging.debug(f"ThinkingSDK: Server URL: {self.server_url}")
+                
+                # Create new session
+                url = urljoin(self.server_url + "/", "auth/session")
+                response = session.post(
+                    url,
+                    json={"api_key": self.api_key},
+                    timeout=self.request_timeout
+                )
+                
+                logging.debug(f"ThinkingSDK: Session response: {response.status_code}")
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    self._session_token = data.get("session_token")
+                    self._session_expires_at = time.time() + data.get("expires_in", 3600)
+                    self._customer_id = data.get("customer_id")
+                    
+                    # Update session headers with token
+                    session.headers["X-Session-Token"] = self._session_token
+                    
+                    logging.debug(f"ThinkingSDK: New session created for customer {self._customer_id}")
+                    return True
+                else:
+                    logging.warning(f"ThinkingSDK: Session creation failed: {response.status_code}")
+                    return False
+                    
+            except Exception as e:
+                import traceback
+                logging.warning(f"ThinkingSDK: Session creation error: {e}")
+                logging.warning(f"ThinkingSDK: Session creation traceback: {traceback.format_exc()}")
+                return False
         
     def _send_batch(self, session: requests.Session, events: List[Dict[str, Any]]) -> bool:
         """Send a batch of events to the server.
