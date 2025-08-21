@@ -25,14 +25,8 @@ class RuntimeInstrumentation:
     
     # Default patterns for files/functions to ignore
     DEFAULT_IGNORE_PATTERNS = {
-        # Standard library paths
-        re.compile(r'/python\d+\.\d+/'),
-        re.compile(r'/site-packages/'),
-        re.compile(r'/dist-packages/'),
-        # ThinkingSDK internal paths
+        # Only ignore ThinkingSDK internal paths to prevent recursion
         re.compile(r'/thinking_sdk_client/'),
-        # Common framework internals
-        re.compile(r'/(flask|django|fastapi|requests|urllib)/'),
     }
     
     DEFAULT_IGNORE_FUNCTIONS = {
@@ -304,8 +298,11 @@ class RuntimeInstrumentation:
                 
             # Queue the event
             self.queue.push(event_info)
-        except Exception:
-            # Never let instrumentation break user code
+        except Exception as e:
+            # Debug: Print what's breaking exception handling
+            print(f"🚨 ThinkingSDK exception processing failed: {e}")
+            import traceback
+            traceback.print_exc()
             pass
         return self._trace_calls
     
