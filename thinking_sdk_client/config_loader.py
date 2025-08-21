@@ -7,6 +7,20 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import keyring
 
+# Automatically load .env file if available
+try:
+    from dotenv import load_dotenv
+    # Look for .env in current directory and parent directories
+    current_dir = Path.cwd()
+    for directory in [current_dir] + list(current_dir.parents):
+        env_file = directory / ".env"
+        if env_file.exists():
+            load_dotenv(env_file)
+            break
+except ImportError:
+    # dotenv not installed, continue without it
+    pass
+
 logger = logging.getLogger("thinkingsdk.config")
 
 

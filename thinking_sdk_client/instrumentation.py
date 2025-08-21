@@ -235,8 +235,8 @@ class RuntimeInstrumentation:
     def _trace_calls(self, frame, event: str, arg: Any) -> Optional[Callable]:
         """Main trace callback for sys.settrace."""
         try:
-            # Quick filters
-            if not self._active:
+            # Quick shutdown detection - Python is shutting down
+            if not self._active or sys.meta_path is None:
                 return None
                 
             if event not in ("call", "return", "exception"):
@@ -299,10 +299,16 @@ class RuntimeInstrumentation:
             # Queue the event
             self.queue.push(event_info)
         except Exception as e:
-            # Debug: Print what's breaking exception handling
-            print(f"🚨 ThinkingSDK exception processing failed: {e}")
-            import traceback
-            traceback.print_exc()
+            # Check if this is a shutdown-related error
+            if "sys.meta_path is None" in str(e) or "Python is likely shutting down" in str(e):
+                # Python is shutting down, disable tracing
+                self._active = False
+                return None
+            else:
+                # Debug: Print what's breaking exception handling
+                print(f"🚨 ThinkingSDK exception processing failed: {e}")
+                import traceback
+                traceback.print_exc()
             pass
         return self._trace_calls
     
