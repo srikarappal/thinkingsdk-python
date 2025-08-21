@@ -23,6 +23,7 @@ Production-grade ThinkingSDK client. Usage inside user code:
 """
 
 import logging
+import atexit
 from typing import Dict, Any, Optional
 
 from ._version import __version__, __version_info__
@@ -150,6 +151,9 @@ def start(
         _instrumentation.setup_hooks()
         _sender.start()
         
+        # Register automatic cleanup on Python exit
+        atexit.register(_cleanup_on_exit)
+        
         if enable_logging or _config.is_logging_enabled():
             logging.info("ThinkingSDK started successfully")
             
@@ -157,6 +161,30 @@ def start(
         # Clean up on failure
         stop()
         raise RuntimeError(f"Failed to start ThinkingSDK: {e}") from e
+
+
+def _cleanup_on_exit() -> None:
+    """
+    Automatic cleanup function called on Python exit.
+    Ensures events are flushed before the program terminates.
+    """
+    try:
+        # Debug: Always try to log that we're running
+        print("ThinkingSDK: Automatic cleanup on exit - flushing events...")
+        
+        # Only cleanup if SDK is still running
+        if _sender is not None and _instrumentation is not None:
+            if _config and (_config.is_logging_enabled()):
+                logging.info("ThinkingSDK: Automatic cleanup on exit - flushing events...")
+            stop(timeout=3.0)  # Shorter timeout for exit handler
+            print("ThinkingSDK: Exit cleanup completed")
+        else:
+            print("ThinkingSDK: Already stopped, no cleanup needed")
+    except Exception as e:
+        # Don't let exit handler exceptions crash the program
+        print(f"ThinkingSDK: Exit cleanup failed: {e}")
+        if _config and (_config.is_logging_enabled()):
+            logging.warning(f"ThinkingSDK: Exit cleanup failed: {e}")
 
 
 def stop(timeout: float = 5.0) -> None:
@@ -167,6 +195,12 @@ def stop(timeout: float = 5.0) -> None:
         timeout: Maximum time to wait for graceful shutdown (seconds)
     """
     global _instrumentation, _sender, _queue, _config
+    
+    # Unregister exit handler to prevent duplicate cleanup
+    try:
+        atexit.unregister(_cleanup_on_exit)
+    except ValueError:
+        pass  # Already unregistered
     
     if _config and (_config.is_logging_enabled()):
         logging.info("Stopping ThinkingSDK...")
