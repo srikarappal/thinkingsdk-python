@@ -30,7 +30,7 @@ class RuntimeInstrumentation:
     }
     
     DEFAULT_IGNORE_FUNCTIONS = {
-        '<module>', '__init__', '__enter__', '__exit__',
+        '__init__', '__enter__', '__exit__',
         '__getattr__', '__setattr__', '__getitem__', '__setitem__'
     }
     
@@ -123,6 +123,7 @@ class RuntimeInstrumentation:
         # State tracking
         self._original_trace = None
         self._original_excepthook = None
+        self._original_sys_excepthook = None
         self._active = False
         self._event_count = 0
         
@@ -135,10 +136,12 @@ class RuntimeInstrumentation:
             # Store original hooks for cleanup
             self._original_trace = sys.gettrace()
             self._original_excepthook = threading.excepthook
+            self._original_sys_excepthook = sys.excepthook
             
             # Install new hooks
             sys.settrace(self._trace_calls)
             threading.excepthook = self._thread_exception_handler
+            sys.excepthook = self._main_thread_exception_handler
             
             self._active = True
         except Exception as e:
@@ -154,6 +157,7 @@ class RuntimeInstrumentation:
             # Restore original hooks
             sys.settrace(self._original_trace)
             threading.excepthook = self._original_excepthook
+            sys.excepthook = self._original_sys_excepthook
             
             self._active = False
         except Exception:
@@ -172,6 +176,36 @@ class RuntimeInstrumentation:
         for pattern in self.ignore_patterns:
             if pattern.search(filename):
                 return True
+        return False
+    
+    def _is_user_file(self, filename: str) -> bool:
+        """Determine if a file is user code vs internal Python/library code."""
+        return (
+            not filename.startswith('<frozen') and
+            not filename.startswith('<built-in>') and
+            'site-packages' not in filename and
+            'lib/python' not in filename and
+            filename.endswith('.py') and
+            # Exclude ThinkingSDK itself to prevent recursion
+            '/thinking_sdk_client/' not in filename
+        )
+    
+    def _is_user_relevant_exception(self, frame, exc_info) -> bool:
+        """Check if user code is involved anywhere in the exception call stack."""
+        exc_type, exc_value, exc_traceback = exc_info
+        
+        # Check if current executing frame is user code
+        if self._is_user_file(frame.f_code.co_filename):
+            return True
+        
+        # Walk through the exception traceback to see if any frame is user code
+        current_tb = exc_traceback
+        while current_tb:
+            if self._is_user_file(current_tb.tb_frame.f_code.co_filename):
+                return True
+            current_tb = current_tb.tb_next
+        
+        # No user code found in the exception path
         return False
         
     def _should_sample(self) -> bool:
@@ -248,6 +282,18 @@ class RuntimeInstrumentation:
             if self._should_ignore_frame(frame):
                 return self._trace_calls
                 
+            # Strategy X: Filter exceptions where user code is NOT involved anywhere in the exception path
+            if event == "exception" and arg:
+                exc_type, exc_value, exc_traceback = arg
+                
+                # Check if user code is involved anywhere in the exception call stack
+                if not self._is_user_relevant_exception(frame, arg):
+                    return self._trace_calls
+                
+                # Debug: Only show exceptions that pass the filter
+                filename = frame.f_code.co_filename
+                print(f"🚨 EXCEPTION DEBUG (FILTERED): {exc_type.__name__} in {filename} at {frame.f_code.co_name}:{frame.f_lineno}")
+                
             # Build base event info for strategic sampling decision
             event_info = {
                 "ts": time.time(),
@@ -290,6 +336,7 @@ class RuntimeInstrumentation:
             
             # Add event-specific data with enhancements
             if event == "exception":
+                # Exception processing working correctly
                 event_info.update(self._handle_exception_event(frame, arg))
             elif event == "call":
                 event_info.update(self._handle_call_event(frame))
@@ -420,6 +467,65 @@ class RuntimeInstrumentation:
         
         return 'normal'         # Fix in next sprint
         
+    def _main_thread_exception_handler(self, exc_type, exc_value, exc_traceback) -> None:
+        """Handle exceptions in main thread."""
+        try:
+            if not self._active:
+                return
+            
+            # Successfully capturing main thread exceptions via sys.excepthook
+            
+            # Extract actual file info from the deepest traceback frame
+            if exc_traceback:
+                # Get the last (deepest) frame from traceback
+                tb = exc_traceback
+                while tb.tb_next:
+                    tb = tb.tb_next
+                
+                actual_file = tb.tb_frame.f_code.co_filename
+                actual_line = tb.tb_lineno
+                actual_func = tb.tb_frame.f_code.co_name
+            else:
+                actual_file = "main_thread"
+                actual_line = 0
+                actual_func = "<module>"
+            
+            exc_info = {
+                "ts": time.time(),
+                "pid": os.getpid(),
+                "thread": threading.current_thread().name,
+                "event": "exception",
+                "exception": {
+                    "type": exc_type.__name__,
+                    "message": str(exc_value),
+                    "traceback": traceback.format_exception(exc_type, exc_value, exc_traceback),
+                    "structured_traceback": [
+                        {
+                            "file": tb.filename,
+                            "line": tb.lineno,
+                            "name": tb.name,
+                            "text": tb.line
+                        }
+                        for tb in traceback.extract_tb(exc_traceback)
+                    ]
+                },
+                "context": {"source": "sys_excepthook"},
+                "func": actual_func,
+                "file": str(Path(actual_file).name),  # Show real filename
+                "line": actual_line
+            }
+            
+            self.queue.push(exc_info)
+        except Exception as e:
+            print(f"🚨 ThinkingSDK: Failed to process main thread exception: {e}")
+        
+        # Call original handler to maintain normal Python behavior
+        if self._original_sys_excepthook:
+            try:
+                self._original_sys_excepthook(exc_type, exc_value, exc_traceback)
+            except Exception:
+                pass
+
     def _thread_exception_handler(self, args) -> None:
         """Handle exceptions in threads."""
         try:

@@ -143,8 +143,8 @@ class EventDeduplicator:
                 # Can't deduplicate without a pattern (e.g., exceptions go through immediately)
                 return event
             
-            # Exceptions and custom events always go through immediately
-            if event.get('event') in ['exception', 'thread_exception', 'custom']:
+            # Custom events always go through immediately (user-generated analytics)
+            if event.get('event') in ['custom']:
                 return event
             
             # Check if we've seen this pattern recently
