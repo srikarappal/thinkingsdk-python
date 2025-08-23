@@ -127,6 +127,9 @@ class RuntimeInstrumentation:
         self._active = False
         self._event_count = 0
         
+        # Exception deduplication - track exceptions captured by sys.settrace
+        self._last_captured_exception = None
+        
     def setup_hooks(self) -> None:
         """Set up instrumentation hooks safely."""
         if self._active:
@@ -289,6 +292,9 @@ class RuntimeInstrumentation:
                 # Check if user code is involved anywhere in the exception call stack
                 if not self._is_user_relevant_exception(frame, arg):
                     return self._trace_calls
+                
+                # Mark this exception as captured by sys.settrace to prevent duplicate from sys.excepthook
+                self._last_captured_exception = (exc_type, str(exc_value), time.time())
                 
                 # Debug: Only show exceptions that pass the filter
                 filename = frame.f_code.co_filename
@@ -472,6 +478,15 @@ class RuntimeInstrumentation:
         try:
             if not self._active:
                 return
+            
+            # Check if this exception was already captured by sys.settrace (preferred)
+            if self._last_captured_exception:
+                last_type, last_message, last_time = self._last_captured_exception
+                if (exc_type == last_type and 
+                    str(exc_value) == last_message and 
+                    time.time() - last_time < 1.0):  # Within 1 second
+                    # Skip duplicate - sys.settrace already captured this exception
+                    return
             
             # Successfully capturing main thread exceptions via sys.excepthook
             
