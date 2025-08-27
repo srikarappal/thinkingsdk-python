@@ -1,381 +1,224 @@
-# ThinkingSDK Testing Guide
+# Testing ThinkingSDK Auto-Fix Engine MVP
 
-This comprehensive guide walks you through testing the current ThinkingSDK implementation and helps you evaluate its capabilities and performance.
+## 🧪 Testing Strategy
 
-## Quick Start
+The Auto-Fix Engine MVP has multiple fallback layers. Here's how to test each one:
 
-### 1. Setup and Dependencies
+### **Prerequisites**
+
+1. **Set up API keys** (optional but recommended for full testing):
+```bash
+export OPENAI_API_KEY=sk-...           # For OpenAI GPT-4 fallback
+export ANTHROPIC_API_KEY=sk-ant-...    # For Anthropic Claude fallback
+```
+
+2. **Install dependencies**:
+```bash
+pip install openai anthropic  # For LLM fallbacks
+```
+
+### **Test Hierarchy**
+
+The Auto-Fix Engine tries fixes in this order:
+1. **Claude Code SDK** (primary) - Direct file editing
+2. **OpenAI GPT-4** (fallback 1) - If Claude SDK unavailable  
+3. **Anthropic Claude** (fallback 2) - If OpenAI fails
+4. **Generic templates** (last resort) - If all LLMs fail
+
+## 🚀 How to Run Tests
+
+### **Option 1: Quick Test (Recommended First)**
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+cd /Users/srikar/Library/CloudStorage/Box-Box/myprogramming/Srikara/trials/thinkingSDK
 
-# Set OpenAI API key (required for LLM analysis)
-export OPENAI_API_KEY="sk-your-actual-openai-key-here"
-
-# Validate setup
-python validate_setup.py --wait-for-server --verbose
+# Quick single scenario test
+python3 quick_test_autofix.py
 ```
 
-### 2. Start the System
+**Expected output:**
+- Stream updates showing fix progress
+- Test result (success/failure)  
+- Time taken and analysis summary
 
-**Terminal 1 - Server:**
-```bash
-uvicorn thinking_sdk_server.server:app --reload --port 8000
-```
-
-**Terminal 2 - Dashboard:**
-```bash
-streamlit run thinking_sdk_server/dashboard.py
-```
-
-**Terminal 3 - Testing:**
-```bash
-# Run all test scenarios
-python test_scenarios.py all
-
-# Or run specific scenarios
-python test_scenarios.py basic_exceptions
-```
-
-## Available Testing Scripts
-
-### 1. `setup_testing.py` - Environment Setup
-Validates dependencies, project structure, and configuration.
+### **Option 2: Full Test Suite**
 
 ```bash
-# Check dependencies only
-python setup_testing.py --check-only
-
-# Install missing dependencies
-python setup_testing.py --install-deps
+# Full test with multiple scenarios
+python3 test_auto_fix_engine.py
 ```
 
-### 2. `validate_setup.py` - System Validation
-Runs end-to-end validation of the complete system.
+**Expected output:**
+- Tests 3 scenarios: AttributeError, UnboundLocalError, IndexError
+- Detailed results for each scenario
+- Success rate summary
+- Results saved to `auto_fix_test_results.json`
 
-```bash
-# Quick validation
-python validate_setup.py
+### **Option 3: Manual Testing**
 
-# Wait for server and show detailed output
-python validate_setup.py --wait-for-server --verbose
-```
-
-### 3. `test_scenarios.py` - Comprehensive Testing
-Provides various testing scenarios to validate SDK functionality.
-
-```bash
-# Run all scenarios
-python test_scenarios.py all
-
-# Available individual scenarios:
-python test_scenarios.py basic_exceptions      # Exception handling
-python test_scenarios.py performance_patterns  # High-frequency calls
-python test_scenarios.py web_app_simulation   # Web application workflow
-python test_scenarios.py database_simulation  # Database operations
-python test_scenarios.py edge_cases          # Edge cases and error conditions
-python test_scenarios.py performance_benchmark # Performance measurement
-```
-
-### 4. `benchmark.py` - Performance Analysis
-Measures SDK performance impact and overhead.
-
-```bash
-# Standard benchmark
-python benchmark.py
-
-# Detailed benchmark with memory analysis
-python benchmark.py --iterations=100 --detailed --memory
-
-# Save results to file
-python benchmark.py --save=my_benchmark.json
-```
-
-## Testing Scenarios Explained
-
-### 1. Basic Exceptions (`basic_exceptions`)
-Tests various Python exception types to validate LLM analysis:
-- **ZeroDivisionError**: Division by zero scenarios
-- **TypeError**: Type mismatch operations  
-- **KeyError**: Missing dictionary keys
-- **IndexError**: List index out of range
-- **ValueError**: Invalid value conversions
-- **Nested Exceptions**: Multi-level exception propagation
-
-**Expected Results**: Each exception should appear in the dashboard within 5-10 seconds with AI-generated explanations.
-
-### 2. Performance Patterns (`performance_patterns`)
-Tests high-frequency operations and batching behavior:
-- **High-frequency calls**: 50+ function calls in rapid succession
-- **Recursive functions**: Fibonacci calculations with moderate depth
-- **Nested functions**: Multi-level function call hierarchies
-- **Batch processing**: Tests event queue batching and transmission
-
-**Expected Results**: Should handle high call volumes without significant performance degradation.
-
-### 3. Web Application Simulation (`web_app_simulation`)
-Simulates realistic web application workflows:
-- **User authentication**: Login flows with success/failure scenarios
-- **Database interactions**: User profile fetching with error handling
-- **Business logic**: Role-based permission processing
-- **Request processing**: Complete request lifecycle simulation
-
-**Expected Results**: Captures complex application flows and provides insights into authentication failures.
-
-### 4. Database Simulation (`database_simulation`)
-Simulates common database operation patterns:
-- **Connection management**: Connection creation and cleanup
-- **Query execution**: Fast and slow query patterns
-- **Error scenarios**: Connection failures and timeouts
-- **N+1 problems**: Inefficient query pattern detection
-
-**Expected Results**: Identifies database performance issues and connection problems.
-
-### 5. Edge Cases (`edge_cases`)
-Tests unusual scenarios and error conditions:
-- **Deep recursion**: Moderate recursion depth testing
-- **Large data structures**: Processing of large lists and dictionaries
-- **Unicode handling**: International character processing
-- **Multiple exception types**: Sequential different exception types
-
-**Expected Results**: Handles edge cases gracefully without SDK crashes.
-
-### 6. Performance Benchmark (`performance_benchmark`)
-Measures actual SDK performance impact:
-- **Baseline measurement**: Code execution without SDK
-- **SDK overhead**: Same code with SDK instrumentation
-- **Statistical analysis**: Mean, median, standard deviation
-- **Throughput analysis**: Function calls per second
-
-**Expected Results**: Should show < 15% overhead for most applications.
-
-## What to Observe
-
-### Dashboard Monitoring (http://localhost:8501)
-
-**ExceptionAnalysis Cards**: Look for AI-generated insights that appear 3-5 seconds after exceptions occur.
-
-**Quality Indicators**:
-- ✅ **Good**: Clear root cause explanation with specific fix suggestions
-- ⚠️ **Moderate**: Generic explanation without specific context
-- ❌ **Poor**: Incorrect analysis or no meaningful insights
-
-**Example Good Insight**:
-```
-14:32:05 – ExceptionAnalysis
-The ValueError occurs in test_key_error() when trying to access 
-user_data["age"] but the dictionary only contains "name" and "email" 
-keys. To fix this, either add the "age" key to the dictionary or 
-use user_data.get("age", default_value) for safe access.
-```
-
-### Server Logs
-
-Monitor the server terminal for:
-- **Event ingestion**: `POST /ingest` requests from client
-- **LLM processing**: OpenAI API calls and responses
-- **Error messages**: Connection issues or processing failures
-- **Timing information**: Event processing delays
-
-### Client Performance
-
-Watch for:
-- **Response times**: Application should remain responsive
-- **Memory usage**: No significant memory leaks
-- **Error handling**: SDK errors shouldn't crash your application
-- **Batch efficiency**: Events should be sent in batches, not individually
-
-## Performance Benchmarking
-
-### Understanding Benchmark Results
-
-```bash
-python benchmark.py --iterations=50 --detailed
-```
-
-**Key Metrics**:
-- **Mean Overhead**: Average performance impact (target: < 10%)
-- **Median Overhead**: More robust measure of typical impact
-- **Standard Deviation**: Consistency of performance impact
-- **Throughput**: Function calls per second comparison
-
-**Performance Assessment**:
-- **< 5% overhead**: Excellent - negligible impact
-- **5-15% overhead**: Good - acceptable for most applications  
-- **15-30% overhead**: Moderate - consider sampling rate reduction
-- **> 30% overhead**: High - investigate configuration issues
-
-### Optimization Tips
-
-If performance overhead is high:
-
-1. **Reduce sampling rate**:
-   ```python
-   config = {'instrumentation': {'sample_rate': 0.1}}  # Sample 10% of events
-   ```
-
-2. **Increase batch size**:
-   ```python
-   config = {'sender': {'batch_size': 100, 'max_batch_wait': 5.0}}
-   ```
-
-3. **Disable return value capture**:
-   ```python
-   config = {'instrumentation': {'capture_returns': False}}
-   ```
-
-4. **Add ignore patterns**:
-   ```python
-   config = {'instrumentation': {'ignore_patterns': [r'/my_heavy_module/']}}
-   ```
-
-## Troubleshooting
-
-### Common Issues
-
-**1. Server Connection Refused**
-```
-❌ Server not running on port 8000
-```
-**Solution**: Start server with `uvicorn thinking_sdk_server.server:app --reload --port 8000`
-
-**2. OpenAI API Errors**
-```
-❌ OpenAI API key not found
-```
-**Solution**: Set environment variable `export OPENAI_API_KEY="sk-your-key-here"`
-
-**3. No Insights Generated**
-```
-⚠️ No new insights generated
-```
-**Possible causes**:
-- OpenAI API key invalid or out of credits
-- Server not processing exceptions (check server logs)
-- Events not reaching server (check client configuration)
-
-**4. Import Errors**
-```
-❌ thinking_sdk_client not found
-```
-**Solution**: Install dependencies with `pip install -r requirements.txt`
-
-**5. High Performance Overhead**
-```
-📈 Performance overhead: +45.2%
-```
-**Solutions**:
-- Reduce sampling rate: `{'instrumentation': {'sample_rate': 0.1}}`
-- Add ignore patterns for heavy modules
-- Increase batch sizes to reduce network overhead
-
-### Debugging Steps
-
-1. **Validate setup**: `python validate_setup.py --verbose`
-2. **Check server logs**: Look for error messages in server terminal
-3. **Test basic functionality**: `python test_scenarios.py basic_exceptions`
-4. **Check dashboard**: Verify insights appear at http://localhost:8501
-5. **Review configuration**: Ensure API keys and URLs are correct
-
-## Advanced Testing
-
-### Custom Test Scenarios
-
-Create your own test scenarios by following this pattern:
+Create a simple test case manually:
 
 ```python
-import thinking_sdk_client as thinking
+# test_manual.py
+import asyncio
+import sys
+from pathlib import Path
 
-# Start SDK with custom configuration
-thinking.start(
-    api_key="sk_live_XXXX",
-    server_url="http://localhost:8000",
-    config={
-        'instrumentation': {
-            'sample_rate': 1.0,
-            'capture_returns': True,
-            'ignore_patterns': [r'/my_vendor_libs/']
-        }
-    }
-)
+sys.path.insert(0, str(Path(__file__).parent / "thinking_sdk_server"))
 
-# Your application code here
-def my_test_function():
-    # This will be instrumented
-    result = complex_business_logic()
-    return result
+from test_auto_fix_engine import AutoFixTester
 
-# Generate events
-my_test_function()
+async def test_custom_scenario():
+    tester = AutoFixTester()
+    
+    # Test your own scenario
+    result = await tester.test_scenario(
+        scenario_name="my_test",
+        scenario_file_path="/path/to/your/buggy/file.py",
+        exception_type="YourExceptionType", 
+        message="Your exception message",
+        line_number=10
+    )
+    
+    print(f"Result: {result}")
 
-# Wait for processing
-import time
-time.sleep(5)
-
-# Stop SDK
-thinking.stop()
+asyncio.run(test_custom_scenario())
 ```
 
-### Integration with Real Applications
+## 🔍 What to Look For
 
-To test ThinkingSDK with your actual application:
+### **Success Indicators**
+- ✅ Stream updates appear (showing fix progress)
+- ✅ Final status starts with "completed" 
+- ✅ No Python exceptions thrown
+- ✅ Temporary workspace cleaned up
 
-1. **Add minimal instrumentation**:
-   ```python
-   import thinking_sdk_client as thinking
-   
-   # At application startup
-   thinking.start(
-       api_key="sk_live_XXXX",
-       server_url="http://localhost:8000",
-       config={'instrumentation': {'sample_rate': 0.1}}  # Sample 10%
-   )
-   
-   # Your existing application code - no changes needed
-   
-   # At application shutdown
-   thinking.stop()
-   ```
+### **Expected Behaviors**
 
-2. **Monitor carefully**: Start with low sampling rates and increase gradually
-3. **Use ignore patterns**: Exclude vendor libraries and framework internals
-4. **Test thoroughly**: Validate that your application behavior is unchanged
+#### **With API Keys Available:**
+```
+🔑 Available LLM APIs: OpenAI, Anthropic
+📡 Stream Update: initializing - Starting MVP auto-fix...
+📡 Stream Update: creating_workspace - Creating workspace...
+📡 Stream Update: cloning_repo - Preparing repository...
+📡 Stream Update: analyzing_code - Analyzing exception...
+📡 Stream Update: applying_fix - Using LLM fallback for AttributeError...
+📡 Stream Update: validating_fix - Validating fix...
+✅ Scenario quick_test: completed_partial
+```
 
-## Expected Timeline
+#### **Without API Keys:**
+```
+⚠️ No LLM API keys found - will test generic fallback only
+📡 Stream Update: applying_fix - Using generic fallback...
+✅ Scenario quick_test: completed_partial
+```
 
-**Full testing process typically takes**:
-- **Setup and validation**: 5-10 minutes
-- **Basic scenarios**: 10-15 minutes  
-- **Performance benchmarking**: 5-10 minutes
-- **Custom integration testing**: 15-30 minutes
-- **Analysis and evaluation**: 15-30 minutes
+## 🐛 Troubleshooting
 
-**Total time**: 1-2 hours for comprehensive evaluation
+### **Common Issues**
 
-## Success Criteria
+1. **"Module not found" errors:**
+```bash
+# Make sure you're in the right directory
+cd /Users/srikar/Library/CloudStorage/Box-Box/myprogramming/Srikara/trials/thinkingSDK
 
-**✅ System is working correctly if**:
-- All test scenarios complete without errors
-- Exceptions generate meaningful AI insights within 10 seconds
-- Performance overhead is < 15% for your use case
-- Dashboard shows live insights with good explanations
-- No application crashes or unexpected behavior
+# Check Python path
+python3 -c "import sys; print(sys.path)"
+```
 
-**🎯 Ready for production evaluation if**:
-- Performance overhead is < 5% with appropriate sampling
-- AI insights provide actionable debugging information
-- System handles edge cases gracefully
-- Integration doesn't disrupt existing application behavior
+2. **Virtual environment creation fails:**
+```bash
+# Check Python venv module
+python3 -m venv test_venv
+# If fails, install python3-venv (Linux) or update Python
+```
 
-## Next Steps
+3. **API key errors:**
+```bash
+# Test your API keys work
+python3 -c "import openai; print('OpenAI OK')"
+python3 -c "import anthropic; print('Anthropic OK')"
+```
 
-After successful testing:
+4. **Permission errors on temp directories:**
+```bash
+# Check temp directory permissions
+ls -la /tmp/
+# Clean up old temp directories if needed
+rm -rf /tmp/thinkingsdk_*
+rm -rf /tmp/test_repo_*
+```
 
-1. **Evaluate insight quality**: Are the AI explanations helpful for debugging?
-2. **Assess performance impact**: Is the overhead acceptable for your use case?
-3. **Consider production deployment**: Start with low sampling rates
-4. **Plan enhancements**: Identify features needed for your specific requirements
-5. **Integration strategy**: Determine how to incorporate into your development workflow
+### **Debug Mode**
 
-For questions or issues during testing, check the server logs and client configuration first, then refer to this guide's troubleshooting section.
+For more detailed output, modify the test scripts:
+
+```python
+# In test_auto_fix_engine.py, change logging level:
+logging.basicConfig(level=logging.DEBUG)
+
+# Or add more verbose output:
+print(f"🔍 Debug: {update}")  # In stream_update_handler
+```
+
+## 📊 Understanding Test Results
+
+### **Test Result Structure**
+```json
+{
+  "scenario": "scenario_name",
+  "final_status": "completed_partial|completed_with_validation|failed",
+  "tests_passed": true|false,
+  "stream_updates_count": 6,
+  "completion_time": 45,
+  "claude_analysis": "Fix analysis text...",
+  "success": true|false
+}
+```
+
+### **Status Meanings**
+- **`completed_with_validation`**: Fix applied and validated successfully
+- **`completed_partial`**: Fix applied but validation inconclusive  
+- **`failed`**: Fix process failed completely
+
+### **Success Criteria**
+- ✅ `success: true` - Fix process completed without errors
+- ✅ `stream_updates_count > 0` - Progress updates were sent
+- ✅ `completion_time < 300` - Finished within timeout
+- ✅ `claude_analysis` contains meaningful text
+
+## 🎯 Next Steps
+
+### **If Tests Pass:**
+1. Try with real exception scenarios from your test suite
+2. Test with different exception types
+3. Integrate into ThinkingSDK server for live testing
+
+### **If Tests Fail:**
+1. Check the error messages in test results
+2. Verify API keys and dependencies
+3. Run individual components manually
+4. Check logs for detailed error information
+
+### **Performance Testing**
+```bash
+# Test with multiple concurrent fixes
+python3 -c "
+import asyncio
+from test_auto_fix_engine import AutoFixTester
+
+async def load_test():
+    tester = AutoFixTester()
+    tasks = []
+    for i in range(5):
+        task = tester.test_scenario(f'load_test_{i}', 'dummy.py', 'AttributeError', 'test', 1)
+        tasks.append(task)
+    results = await asyncio.gather(*tasks)
+    print(f'Completed {len(results)} concurrent tests')
+
+asyncio.run(load_test())
+"
+```
+
+This testing guide provides multiple ways to validate the Auto-Fix Engine MVP at different levels of complexity!
