@@ -1,4 +1,4 @@
-# ThinkingSDK 🧠
+# ThinkingSDK
 
 **AI-powered runtime debugging that actually understands your code**
 
@@ -6,310 +6,223 @@
 [![Python](https://img.shields.io/badge/python-3.7%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-ThinkingSDK transforms runtime debugging by using AI to understand what your code is actually doing. Instead of just collecting metrics, it provides intelligent insights about errors, performance issues, and unexpected behaviors.
+ThinkingSDK is a real-time debugging assistant that captures Python application runtime events and streams them to an AI-powered analysis service for intelligent debugging insights and automated fix suggestions.
 
-## ✨ Features
+## ✨ What ThinkingSDK Does
 
-- **🔍 Intelligent Error Analysis**: Get AI-powered root cause analysis for exceptions
-- **📊 Performance Insights**: Automatic detection of bottlenecks and optimization opportunities  
-- **🔄 Zero-Configuration**: Drop-in instrumentation with no code changes required
-- **⚡ Low Overhead**: <2% CPU overhead, <10MB memory usage
-- **🎯 Smart Filtering**: Focuses on your code, not framework internals
-- **📈 Real-time Dashboard**: Live view of insights as they happen
-- **🔐 Secure**: Your code never leaves your infrastructure
+- **Automated Root Cause Analysis** - AI explains why exceptions occurred with contextual understanding
+- **Instant Fix Suggestions** - Generates concrete code fixes for common error patterns  
+- **No-Repo Mode** - Works without GitHub integration for immediate debugging assistance
+- **Live Insights Dashboard** - Real-time visualization of application behavior and issues
+- **Zero Code Changes** - Just add `thinking.start()` to begin capturing insights
+- **Production-Safe** - Lightweight instrumentation with configurable sampling
 
-## 🚀 Quick Start
+## Architecture
 
-### Installation
-
-```bash
-pip install thinking-sdk-client
+```
+Your Python App → ThinkingSDK Client → Analysis Server → Insights Dashboard
+                ↓                    ↓                 ↓
+           Thin Client          AI Processing      Real-time View
+         (sys.settrace)         (LLM Analysis)    (Streamlit)
 ```
 
-### Basic Usage
+**Thin Client**: Non-intrusive Python library that hooks into your application using `sys.settrace`
+**Fat Server**: AI analysis engine with FastAPI backend and Streamlit dashboard
+**Real-time Processing**: Captures events → streams to server → LLM analysis → actionable insights
+
+## Quick Start
+
+### 1. Start the Server
+
+```bash
+# Set your OpenAI API key
+export OPENAI_API_KEY=sk-your-openai-key
+
+# Start the analysis server
+uvicorn thinking_sdk_server.server:app --reload --port 8000
+
+# Start the dashboard (separate terminal)
+streamlit run thinking_sdk_server/dashboard.py
+```
+
+### 2. Instrument Your Code
 
 ```python
 import thinking_sdk_client as thinking
 
-# Start capturing insights
-thinking.start(api_key="your_api_key")
+# Start capturing runtime events
+thinking.start(
+    api_key="sk_live_your_key", 
+    server_url="http://localhost:8000"
+)
 
 # Your application code runs normally
-def process_order(order_id):
-    # Any exceptions or performance issues are automatically analyzed
-    validate_order(order_id)
-    charge_payment(order_id)
-    send_confirmation(order_id)
-    
-process_order("12345")
+def process_data(data):
+    # Any exceptions are automatically analyzed
+    result = int(data)  # ValueError if data is "abc"
+    return result / 0   # ZeroDivisionError
 
-# View insights in real-time dashboard or get them programmatically
-stats = thinking.get_stats()
+process_data("abc")  # This error gets AI analysis!
 ```
 
-### Context Tracking
+### 3. View AI Insights
 
-Track user flows and request context:
+Within ~5 seconds, check your dashboard at http://localhost:8501 to see:
 
-```python
-# Track specific user actions
-with thinking.context(user_id="user_123", action="checkout"):
-    process_order(order_id)
-    
-# All events within this context are grouped together
-```
+- **Root Cause Analysis**: "ValueError occurred because int() cannot convert string 'abc' to integer"
+- **Fix Suggestions**: "Add input validation: `if data.isdigit(): result = int(data)`"
+- **Context**: Full stack trace with local variables and execution flow
 
-## 🎯 Example: Real Error Analysis
+## Example: Real Error Analysis
 
 ```python
 import thinking_sdk_client as thinking
-thinking.start()
+thinking.start(api_key="sk_live_your_key", server_url="http://localhost:8000")
 
-def calculate_price(items, discount_code):
-    # Bug: doesn't handle None discount_code
-    discount = discounts[discount_code]  # KeyError when code is None
-    return sum(item.price for item in items) * (1 - discount)
+def calculate_average(numbers):
+    # Bug: doesn't handle empty list
+    total = sum(numbers)
+    return total / len(numbers)  # ZeroDivisionError when numbers is []
 
-# ThinkingSDK automatically captures and analyzes the error:
+# ThinkingSDK automatically captures and analyzes:
+calculate_average([])
+
+# AI Analysis Result:
+# 🔴 ZeroDivisionError in calculate_average at line 4
 # 
-# 🔴 KeyError in calculate_price at line 5
-# 
-# Root Cause Analysis:
-# The function tries to access discounts dictionary with None as key.
-# This happens when discount_code parameter is not provided.
+# Root Cause: Division by zero occurs when len(numbers) returns 0
+# The function doesn't validate that the input list is non-empty
 # 
 # Suggested Fix:
-# Add validation: discount = discounts.get(discount_code, 0)
+# if not numbers:
+#     return 0  # or raise ValueError("Cannot calculate average of empty list")
+# return sum(numbers) / len(numbers)
 ```
 
-## 🏗️ Architecture
+## Why ThinkingSDK is Needed
 
-```
-Your App → ThinkingSDK Client → Analysis Server → Insights Dashboard
-         ↓                     ↓                 ↓
-    Lightweight          AI Processing      Real-time View
-    Instrumentation      (GPT-4)           (Streamlit)
-```
+**Problem**: Debugging production issues is time-consuming and often requires extensive manual analysis of logs, stack traces, and code context.
 
-## 📋 Configuration
+**Solution**: ThinkingSDK provides:
+- **Faster Debug Cycles** - Reduces time from error discovery to resolution
+- **Context-Aware Analysis** - Understands your specific code patterns and variables  
+- **Production-Safe** - Lightweight instrumentation with configurable sampling
+- **Developer Productivity** - Turns cryptic errors into actionable explanations
+- **Learning Tool** - Helps developers understand common pitfalls and best practices
 
-### Via YAML File (`thinkingsdk.yaml`)
+## Configuration Options
 
-```yaml
-# Enable/disable SDK
-enabled: true
-
-# API Configuration
-api_key_source: "env:THINKINGSDK_API_KEY"
-server_url: "https://api.thinkingsdk.com"
-
-# Tracking Configuration
-tracking:
-  mode: "smart"  # smart, all, or selective
-  capture_returns: false
-  capture_performance: true
-  capture_memory: false
-  sample_rate: 1.0
-
-# Performance Settings
-performance:
-  max_overhead_percent: 5
-  auto_backoff: true
-  slow_function_threshold_ms: 100
-  
-# Privacy Settings
-privacy:
-  sanitize_data: true
-  excluded_variables: ["password", "token", "secret", "key"]
-```
-
-### Via Environment Variables
-
-```bash
-export THINKINGSDK_ENABLED=true
-export THINKINGSDK_API_KEY=your_api_key
-export THINKINGSDK_SERVER_URL=https://api.thinkingsdk.com
-```
-
-### Via Code
+### Basic Configuration
 
 ```python
 thinking.start(
-    api_key="your_api_key",
+    api_key="sk_live_your_key",
+    server_url="http://localhost:8000",
     config={
-        'instrumentation': {
-            'capture_performance': True,
-            'sample_rate': 0.5  # Sample 50% of events
-        },
-        'sender': {
-            'batch_size': 100,
-            'retry_attempts': 3
-        }
+        'capture_exceptions': True,
+        'capture_performance': False,
+        'sample_rate': 1.0  # Capture all events
     }
 )
 ```
 
-## 🛠️ Advanced Usage
+### Environment Variables
 
-### Selective Instrumentation
-
-```python
-# Only instrument specific functions
-@thinking.instrument
-def critical_function():
-    pass
-
-# Or use context managers
-with thinking.trace("important_operation"):
-    perform_operation()
-```
-
-### Custom Insights
-
-```python
-# Add custom context to events
-thinking.add_context("deployment", "v2.3.1")
-thinking.add_context("feature_flag", "new_checkout_flow")
-
-# These appear in all subsequent events
-```
-
-### Performance Monitoring
-
-```python
-# ThinkingSDK automatically tracks slow functions
-def slow_operation():
-    time.sleep(1)  # Automatically flagged as slow
-    
-# Get performance stats
-stats = thinking.get_stats()
-print(f"Slow functions: {stats['instrumentation']['slow_functions']}")
-```
-
-## 📊 Example Applications
-
-### Web Application
-
-```python
-from flask import Flask
-import thinking_sdk_client as thinking
-
-app = Flask(__name__)
-thinking.start()
-
-@app.route('/api/users/<user_id>')
-def get_user(user_id):
-    with thinking.context(user_id=user_id, endpoint="/api/users"):
-        user = db.get_user(user_id)  # Any errors are analyzed
-        return jsonify(user)
-```
-
-### Data Pipeline
-
-```python
-import thinking_sdk_client as thinking
-thinking.start()
-
-def etl_pipeline(data_file):
-    with thinking.context(pipeline="customer_etl", file=data_file):
-        data = extract_data(data_file)
-        transformed = transform_data(data)
-        load_to_warehouse(transformed)
-        # Each step's performance and errors are tracked
-```
-
-### Machine Learning
-
-```python
-import thinking_sdk_client as thinking
-thinking.start()
-
-def train_model(dataset):
-    with thinking.context(model="recommendation_v2", dataset=dataset):
-        features = preprocess(dataset)
-        model = train(features)
-        metrics = evaluate(model)
-        # Training performance and failures are analyzed
-        return model
-```
-
-## 🔧 Deployment Options
-
-### 1. Import Hook (Simplest)
-```python
-# Add to your main.py
-import thinking_sdk_client.auto_instrument
-```
-
-### 2. Wrapper Command
 ```bash
-thinking run python your_app.py
+export THINKINGSDK_API_KEY=sk_live_your_key
+export THINKINGSDK_SERVER_URL=http://localhost:8000
+export OPENAI_API_KEY=sk-your-openai-key
 ```
 
-### 3. Docker
-```dockerfile
-FROM python:3.9
-RUN pip install thinking-sdk-client
-ENV THINKINGSDK_ENABLED=true
-ENTRYPOINT ["thinking", "run", "python"]
+## Use Cases
+
+### Development Debugging
+```python
+import thinking_sdk_client as thinking
+thinking.start()
+
+# Debug complex data processing
+def process_user_data(user_input):
+    # All exceptions get instant AI analysis
+    cleaned = clean_data(user_input)
+    validated = validate_schema(cleaned) 
+    return transform_data(validated)
 ```
 
-## 📈 Performance Impact
+### Testing & QA
+```python
+# Automatically analyze test failures
+def test_payment_processing():
+    with thinking.context(test="payment_flow"):
+        process_payment(invalid_card_data)  # AI explains why this fails
+```
 
-Based on real-world testing:
+### Production Monitoring
+```python
+# Sample 10% of production traffic for analysis
+thinking.start(config={'sample_rate': 0.1})
+
+@app.route('/api/orders')
+def create_order():
+    # Critical path exceptions get AI analysis
+    return process_order_safely()
+```
+
+## Event Flow Viewer
+
+Access detailed event analysis at `http://localhost:8000/event-flow/{event_id}`:
+
+- **Event Details**: Full stack trace and local variables
+- **Exception Analysis**: AI-powered root cause explanation  
+- **Fix Suggestions**: Concrete code improvements
+- **State Transitions**: Processing workflow status
+
+## Performance Impact
 
 - **CPU Overhead**: <2% for typical applications
-- **Memory Usage**: <10MB additional memory
-- **Latency**: <0.5ms per function call
-- **Network**: Batched async sending, no blocking
+- **Memory Usage**: <10MB additional memory  
+- **Network**: Batched async sending, no blocking I/O
+- **Instrumentation**: Uses Python's built-in `sys.settrace` efficiently
 
-## 🔐 Security & Privacy
+## Security & Privacy
 
-- **Local Processing**: Events are processed on your infrastructure
-- **Data Sanitization**: Automatic removal of sensitive data
-- **API Key Security**: Support for secure key storage (env vars, files, keyring)
-- **Selective Tracking**: Choose exactly what to monitor
+- **Local Processing**: Events processed on your infrastructure
+- **API Key Security**: Secure token-based authentication
+- **Data Control**: You control what data is captured and analyzed
+- **No Code Upload**: Only runtime events are sent, never source code
 
-## 📚 Documentation
-
-- [Quick Start Guide](https://docs.thinkingsdk.com/quickstart)
-- [Configuration Reference](https://docs.thinkingsdk.com/configuration)
-- [API Documentation](https://docs.thinkingsdk.com/api)
-- [Troubleshooting](https://docs.thinkingsdk.com/troubleshooting)
-- [Examples](https://github.com/thinkingsdk/examples)
-
-## 🤝 Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **Documentation**: [docs.thinkingsdk.com](https://docs.thinkingsdk.com)
-- **Issues**: [GitHub Issues](https://github.com/thinkingsdk/thinking-sdk-python/issues)
-- **Discord**: [Join our community](https://discord.gg/thinkingsdk)
-- **Email**: support@thinkingsdk.com
-
-## 🎉 Getting Started in 30 Seconds
+## Getting Started in 30 Seconds
 
 ```bash
-# Install
-pip install thinking-sdk-client
+# Clone and set up
+git clone https://github.com/your-org/thinkingsdk
+cd thinkingsdk
 
-# Set your API key
-export THINKINGSDK_API_KEY=your_api_key
+# Set API keys  
+export OPENAI_API_KEY=sk-your-openai-key
 
-# Add to your code
-echo "import thinking_sdk_client.auto_instrument" > instrumented_app.py
-cat your_app.py >> instrumented_app.py
+# Start server
+uvicorn thinking_sdk_server.server:app --reload &
+streamlit run thinking_sdk_server/dashboard.py &
 
-# Run with insights!
-python instrumented_app.py
+# Test it
+python -c "
+import thinking_sdk_client as thinking
+thinking.start(api_key='sk_live_test', server_url='http://localhost:8000')
+int('abc')  # This error gets AI analysis!
+"
 ```
+
+## Target Applications
+
+- **Web Applications** - Debug API endpoints and business logic
+- **Data Pipelines** - Analyze ETL failures and data quality issues  
+- **Machine Learning** - Understand model training and inference errors
+- **Developer Tools** - Build smarter debugging experiences
+- **Educational Code** - Help developers learn from their mistakes
 
 ---
 
 **Built with ❤️ to make debugging intelligent**
+
+Transform runtime errors into learning opportunities with AI-powered analysis that actually understands your code context.
