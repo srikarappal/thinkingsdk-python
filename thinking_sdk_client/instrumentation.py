@@ -643,13 +643,33 @@ class RuntimeInstrumentation:
         # Add git repository context for auto-fix
         git_repositories = self._config.get('git_repositories', [])
         if git_repositories:
+            # Use the first repository from the config
+            repo_url = git_repositories[0]
+            
+            # Extract repo name from URL (e.g., https://github.com/user/repo -> user/repo)
+            repo_full_name = None
+            if repo_url.startswith('https://github.com/'):
+                repo_full_name = repo_url.replace('https://github.com/', '').rstrip('/')
+                if repo_full_name.endswith('.git'):
+                    repo_full_name = repo_full_name[:-4]
+            elif repo_url.startswith('git@github.com:'):
+                repo_full_name = repo_url.replace('git@github.com:', '').rstrip('/')
+                if repo_full_name.endswith('.git'):
+                    repo_full_name = repo_full_name[:-4]
+            
             exception_data["repository_context"] = {
-                "git_repositories": git_repositories,
+                "git_repositories": git_repositories,  # Keep for backward compatibility
+                "repo_full_name": repo_full_name,
+                "branch": "main",  # Default branch, could be made configurable
+                "commit_hash": None,  # Would need git integration to get actual commit
                 "auto_fix_enabled": True
             }
         else:
             exception_data["repository_context"] = {
                 "git_repositories": [],
+                "repo_full_name": None,
+                "branch": None,
+                "commit_hash": None,
                 "auto_fix_enabled": False
             }
         
