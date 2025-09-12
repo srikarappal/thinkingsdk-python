@@ -125,7 +125,11 @@ class Config:
         
     def get_instrumentation_config(self) -> Dict[str, Any]:
         """Get instrumentation configuration."""
-        return self._config['instrumentation'].copy()
+        config = self._config['instrumentation'].copy()
+        # Include git_repositories for repository context
+        if 'git_repositories' in self._config:
+            config['git_repositories'] = self._config['git_repositories']
+        return config
         
     def get_sender_config(self) -> Dict[str, Any]:
         """Get background sender configuration."""
