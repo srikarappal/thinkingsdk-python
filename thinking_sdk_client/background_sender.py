@@ -196,10 +196,12 @@ class BackgroundSender:
         if self._is_circuit_open():
             return False
         
-        # Ensure we have a valid session
-        if not self._ensure_session(session):
-            logging.warning("ThinkingSDK: Failed to get session token")
-            return False
+        # Try to ensure we have a valid session, but fall back to API key if needed
+        has_session = self._ensure_session(session)
+        if not has_session:
+            logging.warning("ThinkingSDK: Failed to get session token, falling back to API key authentication")
+            # Set API key header as fallback
+            session.headers["X-THINKINGSDK-KEY"] = self.api_key
             
         try:
             url = urljoin(self.server_url + "/", "ingest")
@@ -230,22 +232,42 @@ class BackgroundSender:
                     self._total_sent += len(events)
                     return True
                 elif response.status_code == 401:
-                    # Session expired or invalid - clear and retry once
-                    self._session_token = None
-                    self._session_expires_at = 0
-                    
-                    if self._ensure_session(session):
-                        # Retry with new session
-                        response = session.post(
-                            url,
-                            data=batch_data,
-                            headers=headers,
-                            timeout=self.request_timeout
-                        )
-                        if response.status_code == 200:
-                            self._consecutive_failures = 0
-                            self._total_sent += len(events)
-                            return True
+                    # Authentication failed
+                    if has_session:
+                        # Session expired or invalid - clear and retry once
+                        self._session_token = None
+                        self._session_expires_at = 0
+                        
+                        if self._ensure_session(session):
+                            # Retry with new session
+                            response = session.post(
+                                url,
+                                data=batch_data,
+                                headers=headers,
+                                timeout=self.request_timeout
+                            )
+                            if response.status_code == 200:
+                                self._consecutive_failures = 0
+                                self._total_sent += len(events)
+                                return True
+                        else:
+                            # Fall back to API key
+                            session.headers["X-THINKINGSDK-KEY"] = self.api_key
+                            response = session.post(
+                                url,
+                                data=batch_data,
+                                headers=headers,
+                                timeout=self.request_timeout
+                            )
+                            if response.status_code == 200:
+                                self._consecutive_failures = 0
+                                self._total_sent += len(events)
+                                return True
+                    else:
+                        # API key authentication failed - this is fatal
+                        logging.error("ThinkingSDK: API key authentication failed")
+                        self._consecutive_failures += 1
+                        return False
                     
                     logging.warning("ThinkingSDK: Authentication failed")
                     return False
