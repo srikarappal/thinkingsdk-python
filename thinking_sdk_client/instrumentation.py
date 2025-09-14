@@ -296,9 +296,8 @@ class RuntimeInstrumentation:
                 # Mark this exception as captured by sys.settrace to prevent duplicate from sys.excepthook
                 self._last_captured_exception = (exc_type, str(exc_value), time.time())
                 
-                # Debug: Only show exceptions that pass the filter
-                filename = frame.f_code.co_filename
-                print(f"🚨 EXCEPTION DEBUG (FILTERED): {exc_type.__name__} in {filename} at {frame.f_code.co_name}:{frame.f_lineno}")
+                # Silently capture - no debug output to maintain transparency
+                pass
                 
             # Build base event info for strategic sampling decision
             event_info = {
@@ -358,10 +357,10 @@ class RuntimeInstrumentation:
                 self._active = False
                 return None
             else:
-                # Debug: Print what's breaking exception handling
-                print(f"🚨 ThinkingSDK exception processing failed: {e}")
-                import traceback
-                traceback.print_exc()
+                # Only show debug info if DEBUG mode is enabled
+                if self._config and self._config.get('debug', False):
+                    print(f"ThinkingSDK exception processing failed: {e}")
+                    traceback.print_exc()
             pass
         return self._trace_calls
     
@@ -532,7 +531,8 @@ class RuntimeInstrumentation:
             
             self.queue.push(exc_info)
         except Exception as e:
-            print(f"🚨 ThinkingSDK: Failed to process main thread exception: {e}")
+            # Silently fail - don't interfere with normal exception handling
+            pass
         
         # Call original handler to maintain normal Python behavior
         if self._original_sys_excepthook:

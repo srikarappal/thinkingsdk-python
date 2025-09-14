@@ -87,7 +87,7 @@ def start(
     # Check if SDK is enabled
     if not config_loader.is_enabled():
         if enable_logging:
-            logging.info("ThinkingSDK is disabled in configuration")
+            logging.debug("ThinkingSDK is disabled in configuration")
         return
     
     # Build final configuration (priority: args > config dict > yaml file)
@@ -155,7 +155,7 @@ def start(
         atexit.register(_cleanup_on_exit)
         
         if enable_logging or _config.is_logging_enabled():
-            logging.info("ThinkingSDK started successfully")
+            logging.debug("ThinkingSDK started successfully")
             
     except Exception as e:
         # Clean up on failure
@@ -169,22 +169,18 @@ def _cleanup_on_exit() -> None:
     Ensures events are flushed before the program terminates.
     """
     try:
-        # Debug: Always try to log that we're running
-        print("ThinkingSDK: Automatic cleanup on exit - flushing events...")
-        
+        # Silently cleanup - no output to maintain transparency
         # Only cleanup if SDK is still running
         if _sender is not None and _instrumentation is not None:
             if _config and (_config.is_logging_enabled()):
-                logging.info("ThinkingSDK: Automatic cleanup on exit - flushing events...")
+                logging.debug("ThinkingSDK: Automatic cleanup on exit - flushing events...")
             stop(timeout=3.0)  # Shorter timeout for exit handler
-            print("ThinkingSDK: Exit cleanup completed")
-        else:
-            print("ThinkingSDK: Already stopped, no cleanup needed")
+            if _config and (_config.is_logging_enabled()):
+                logging.debug("ThinkingSDK: Exit cleanup completed")
     except Exception as e:
         # Don't let exit handler exceptions crash the program
-        print(f"ThinkingSDK: Exit cleanup failed: {e}")
         if _config and (_config.is_logging_enabled()):
-            logging.warning(f"ThinkingSDK: Exit cleanup failed: {e}")
+            logging.debug(f"ThinkingSDK: Exit cleanup failed: {e}")
 
 
 def stop(timeout: float = 5.0) -> None:
@@ -203,7 +199,7 @@ def stop(timeout: float = 5.0) -> None:
         pass  # Already unregistered
     
     if _config and (_config.is_logging_enabled()):
-        logging.info("Stopping ThinkingSDK...")
+        logging.debug("Stopping ThinkingSDK...")
     
     # Clean up instrumentation
     if _instrumentation:
@@ -230,7 +226,7 @@ def stop(timeout: float = 5.0) -> None:
     _config = None
     
     if _config and _config.is_logging_enabled():
-        logging.info("ThinkingSDK stopped")
+        logging.debug("ThinkingSDK stopped")
 
 
 def get_stats() -> Dict[str, Any]:

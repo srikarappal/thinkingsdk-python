@@ -174,13 +174,16 @@ class BackgroundSender:
                     logging.debug(f"ThinkingSDK: New session created for customer {self._customer_id}")
                     return True
                 else:
-                    logging.warning(f"ThinkingSDK: Session creation failed: {response.status_code}")
+                    logging.debug(f"ThinkingSDK: Session creation failed: {response.status_code}")
                     return False
                     
             except Exception as e:
-                import traceback
-                logging.warning(f"ThinkingSDK: Session creation error: {e}")
-                logging.warning(f"ThinkingSDK: Session creation traceback: {traceback.format_exc()}")
+                if self._config.get('debug', False):
+                    import traceback
+                    logging.debug(f"ThinkingSDK: Session creation error: {e}")
+                    logging.debug(f"ThinkingSDK: Session creation traceback: {traceback.format_exc()}")
+                else:
+                    logging.debug(f"ThinkingSDK: Session creation error: {e}")
                 return False
         
     def _send_batch(self, session: requests.Session, events: List[Dict[str, Any]]) -> bool:
@@ -199,7 +202,7 @@ class BackgroundSender:
         # Try to ensure we have a valid session, but fall back to API key if needed
         has_session = self._ensure_session(session)
         if not has_session:
-            logging.warning("ThinkingSDK: Failed to get session token, falling back to API key authentication")
+            logging.debug("ThinkingSDK: Failed to get session token, falling back to API key authentication")
             # Set API key header as fallback
             session.headers["X-THINKINGSDK-KEY"] = self.api_key
             
@@ -269,7 +272,7 @@ class BackgroundSender:
                         self._consecutive_failures += 1
                         return False
                     
-                    logging.warning("ThinkingSDK: Authentication failed")
+                    logging.debug("ThinkingSDK: Authentication failed")
                     return False
                 else:
                     # Other errors

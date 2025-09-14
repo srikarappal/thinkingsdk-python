@@ -37,8 +37,8 @@ class ValidationResult:
         self.details = details
     
     def __str__(self):
-        status = "✅" if self.passed else "❌"
-        return f"{status} {self.name}: {self.message}"
+        status = "PASS" if self.passed else "FAIL"
+        return f"[{status}] {self.name}: {self.message}"
 
 
 class DeploymentValidator:
@@ -50,7 +50,7 @@ class DeploymentValidator:
         
     def validate_all(self) -> bool:
         """Run all validation checks."""
-        print("🔍 ThinkingSDK Deployment Validation\n")
+        print("ThinkingSDK Deployment Validation\n")
         print("=" * 50)
         
         # Run checks
@@ -67,7 +67,7 @@ class DeploymentValidator:
         
         # Summary
         print("\n" + "=" * 50)
-        print("📊 Validation Summary\n")
+        print("Validation Summary\n")
         
         passed = sum(1 for r in self.results if r.passed)
         total = len(self.results)
@@ -77,7 +77,7 @@ class DeploymentValidator:
             if result.details and not result.passed:
                 print(f"   Details: {result.details}")
         
-        print(f"\n✨ {passed}/{total} checks passed")
+        print(f"\nResult: {passed}/{total} checks passed")
         
         return passed == total
     
@@ -477,7 +477,7 @@ def main():
     
     if args.diagnose:
         advice = diagnose_issue(args.diagnose)
-        print(f"💡 Diagnosis: {advice}")
+        print(f"Diagnosis: {advice}")
     else:
         success = validate_deployment(args.config)
         sys.exit(0 if success else 1)
