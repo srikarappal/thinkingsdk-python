@@ -7,6 +7,7 @@ import os
 import re
 from typing import Any, Dict, Optional, Set, Callable
 from pathlib import Path
+from .exception_chain import ExceptionChainProcessor
 
 try:
     from .strategic_sampling import StrategicSampler, RemoteConfigManager
@@ -508,7 +509,11 @@ class RuntimeInstrumentation:
                 traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stderr)
     
     def _capture_main_thread_exception(self, exc_type, exc_value, exc_traceback) -> None:
-        """Capture exception details for ThinkingSDK."""
+        """Capture exception details for ThinkingSDK including exception chains."""
+        # Extract the full exception chain
+        exc_info_tuple = (exc_type, exc_value, exc_traceback)
+        exception_chain = ExceptionChainProcessor.extract_exception_chain(exc_info_tuple)
+        
         # Extract actual file info from the deepest traceback frame
         if exc_traceback:
             # Get the last (deepest) frame from traceback
@@ -541,13 +546,24 @@ class RuntimeInstrumentation:
                         "text": tb.line
                     }
                     for tb in traceback.extract_tb(exc_traceback)
-                ]
+                ],
+                "exception_chain": exception_chain  # Include full chain
             },
             "context": {"source": "sys_excepthook"},
             "func": actual_func,
             "file": str(Path(actual_file).name),  # Show real filename
             "line": actual_line
         }
+        
+        # Add chain summary if multiple exceptions
+        if len(exception_chain) > 1:
+            exc_info["exception"]["chain_summary"] = ExceptionChainProcessor.format_chain_for_display(exception_chain)
+            root_cause = ExceptionChainProcessor.get_root_cause(exception_chain)
+            if root_cause:
+                exc_info["exception"]["root_cause"] = {
+                    "type": root_cause.get("type"),
+                    "message": root_cause.get("message")
+                }
         
         self.queue.push(exc_info)
 
@@ -587,10 +603,13 @@ class RuntimeInstrumentation:
                     pass
 
     def _handle_exception_event(self, frame, exc_info) -> Dict[str, Any]:
-        """Handle exception events with enhanced context."""
+        """Handle exception events with enhanced context including exception chains."""
         exc_type, exc_val, exc_tb = exc_info
         
-        # Get full traceback for AI analysis
+        # Extract the full exception chain (including __cause__ and __context__)
+        exception_chain = ExceptionChainProcessor.extract_exception_chain(exc_info)
+        
+        # Get full traceback for AI analysis (for the main exception)
         full_traceback = traceback.format_exception(exc_type, exc_val, exc_tb)
         
         # Extract structured stack trace with full file paths and variable context
@@ -632,11 +651,25 @@ class RuntimeInstrumentation:
                 "traceback": full_traceback,  # Full traceback for analysis
                 "traceback_summary": full_traceback[-5:],  # Last 5 for display
                 "structured_traceback": structured_traceback,  # Structured for processing
-                "source_context": source_context  # Code around error
+                "source_context": source_context,  # Code around error
+                "exception_chain": exception_chain  # Full exception chain with causes
             },
             "locals": self._capture_locals(frame),
             "globals": self._capture_globals(frame)  # Add globals for context
         }
+        
+        # Add chain summary for quick understanding
+        if len(exception_chain) > 1:
+            chain_summary = ExceptionChainProcessor.format_chain_for_display(exception_chain)
+            exception_data["exception"]["chain_summary"] = chain_summary
+            
+            # Mark root cause for easy access
+            root_cause = ExceptionChainProcessor.get_root_cause(exception_chain)
+            if root_cause:
+                exception_data["exception"]["root_cause"] = {
+                    "type": root_cause.get("type"),
+                    "message": root_cause.get("message")
+                }
         
         # Add client-side severity and business impact assessment
         exception_data.update(self._assess_exception_severity_and_impact(
