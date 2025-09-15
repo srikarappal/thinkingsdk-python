@@ -8,6 +8,8 @@ import re
 from typing import Any, Dict, Optional, Set, Callable
 from pathlib import Path
 from .exception_chain import ExceptionChainProcessor
+from .enhanced_context import EnhancedContextCapture
+from .integrations import get_integration_registry
 
 try:
     from .strategic_sampling import StrategicSampler, RemoteConfigManager
@@ -93,6 +95,7 @@ class RuntimeInstrumentation:
         self.capture_source_lines = self._config.get('capture_source_lines', False)
         self.slow_function_threshold = self._config.get('slow_function_threshold', 0.1)
         self.hot_path_threshold = self._config.get('hot_path_threshold', 50)
+        self.exceptions_only = self._config.get('exceptions_only', True)  # MVP: Only capture exceptions
         
         # Runtime tracking state
         if self.capture_performance or self.capture_call_patterns:
@@ -130,6 +133,12 @@ class RuntimeInstrumentation:
         
         # Exception deduplication - track exceptions captured by sys.settrace
         self._last_captured_exception = None
+        
+        # Initialize enhanced context capture
+        self.enhanced_context = EnhancedContextCapture(self._config)
+        
+        # Initialize framework integrations
+        self.integration_registry = get_integration_registry()
         
     def setup_hooks(self) -> None:
         """Set up instrumentation hooks safely."""
@@ -349,8 +358,14 @@ class RuntimeInstrumentation:
             elif event == "return":
                 event_info.update(self._handle_return_event(frame, arg))
                 
-            # Queue the event
-            self.queue.push(event_info)
+            # MVP: Only queue exception events if configured
+            if self.exceptions_only:
+                if event == "exception":
+                    self.queue.push(event_info)
+                # Drop call/return events for MVP
+            else:
+                # Queue all events
+                self.queue.push(event_info)
         except Exception as e:
             # Check if this is a shutdown-related error
             if "sys.meta_path is None" in str(e) or "Python is likely shutting down" in str(e):
@@ -509,7 +524,7 @@ class RuntimeInstrumentation:
                 traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stderr)
     
     def _capture_main_thread_exception(self, exc_type, exc_value, exc_traceback) -> None:
-        """Capture exception details for ThinkingSDK including exception chains."""
+        """Capture exception details for ThinkingSDK including exception chains and breadcrumbs."""
         # Extract the full exception chain
         exc_info_tuple = (exc_type, exc_value, exc_traceback)
         exception_chain = ExceptionChainProcessor.extract_exception_chain(exc_info_tuple)
@@ -565,6 +580,30 @@ class RuntimeInstrumentation:
                     "message": root_cause.get("message")
                 }
         
+        # Attach breadcrumbs to provide context leading to the exception
+        from . import _breadcrumb_tracker
+        if _breadcrumb_tracker:
+            breadcrumbs = _breadcrumb_tracker.get_breadcrumbs(count=50)  # Get last 50 breadcrumbs
+            if breadcrumbs:
+                exc_info["breadcrumbs"] = breadcrumbs
+        
+        # Add enhanced context (system, runtime, environment, threads)
+        try:
+            enhanced_context = self.enhanced_context.capture_all()
+            exc_info["enhanced_context"] = enhanced_context
+            
+            # Add context size for monitoring
+            context_size = self.enhanced_context.get_context_size_estimate(enhanced_context)
+            exc_info["context_size_bytes"] = context_size
+        except Exception:
+            pass  # Don't fail if context capture fails
+        
+        # Add framework-specific context (Django, Flask, FastAPI)
+        try:
+            exc_info = self.integration_registry.get_all_context(exc_info)
+        except Exception:
+            pass  # Don't fail if framework context capture fails
+        
         self.queue.push(exc_info)
 
     def _thread_exception_handler(self, args) -> None:
@@ -603,7 +642,7 @@ class RuntimeInstrumentation:
                     pass
 
     def _handle_exception_event(self, frame, exc_info) -> Dict[str, Any]:
-        """Handle exception events with enhanced context including exception chains."""
+        """Handle exception events with enhanced context including exception chains and breadcrumbs."""
         exc_type, exc_val, exc_tb = exc_info
         
         # Extract the full exception chain (including __cause__ and __context__)
@@ -670,6 +709,30 @@ class RuntimeInstrumentation:
                     "type": root_cause.get("type"),
                     "message": root_cause.get("message")
                 }
+        
+        # Attach breadcrumbs to provide context leading to the exception
+        from . import _breadcrumb_tracker
+        if _breadcrumb_tracker:
+            breadcrumbs = _breadcrumb_tracker.get_breadcrumbs(count=50)  # Get last 50 breadcrumbs
+            if breadcrumbs:
+                exception_data["breadcrumbs"] = breadcrumbs
+        
+        # Add enhanced context (system, runtime, environment, threads)
+        try:
+            enhanced_context = self.enhanced_context.capture_all()
+            exception_data["enhanced_context"] = enhanced_context
+            
+            # Add context size for monitoring
+            context_size = self.enhanced_context.get_context_size_estimate(enhanced_context)
+            exception_data["context_size_bytes"] = context_size
+        except Exception:
+            pass  # Don't fail if context capture fails
+        
+        # Add framework-specific context (Django, Flask, FastAPI)
+        try:
+            exception_data = self.integration_registry.get_all_context(exception_data)
+        except Exception:
+            pass  # Don't fail if framework context capture fails
         
         # Add client-side severity and business impact assessment
         exception_data.update(self._assess_exception_severity_and_impact(

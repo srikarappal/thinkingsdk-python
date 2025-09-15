@@ -32,6 +32,7 @@ class BackgroundSender:
                 - circuit_breaker_threshold: Failures before opening circuit (default: 5)
                 - circuit_breaker_timeout: Seconds to wait before retry after circuit opens (default: 60)
                 - request_timeout: HTTP request timeout in seconds (default: 10)
+                - exceptions_only: If True, only send exception events (default: True for MVP)
         """
         self.queue = queue
         self.api_key = api_key
@@ -46,6 +47,7 @@ class BackgroundSender:
         self.circuit_breaker_threshold = self._config.get('circuit_breaker_threshold', 5)
         self.circuit_breaker_timeout = self._config.get('circuit_breaker_timeout', 60)
         self.request_timeout = self._config.get('request_timeout', 10)
+        self.exceptions_only = self._config.get('exceptions_only', True)  # MVP: Default to exceptions only
         
         # Thread control
         self._stop_event = threading.Event()

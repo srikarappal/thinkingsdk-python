@@ -24,6 +24,7 @@ class Config:
             'sample_rate': 1.0,
             'ignore_patterns': [],
             'ignore_functions': [],
+            'exceptions_only': True,  # MVP: Only capture exception events
         },
         
         # Strategic sampling settings for AI-agentic debugging
@@ -48,6 +49,7 @@ class Config:
             'circuit_breaker_threshold': 5,
             'circuit_breaker_timeout': 60,
             'request_timeout': 10,
+            'exceptions_only': True,  # MVP: Only send exception events
         },
         
         # Global settings
