@@ -106,10 +106,22 @@ class BackgroundSender:
         session.mount("http://", adapter)
         session.mount("https://", adapter)
         
-        # Set default headers (no API key here - use session token instead)
+        # Set default headers with SDK information
+        from ._version import __version__
+        import platform
+        
+        # Build informative User-Agent: ThinkingSDK-Python/0.1.0 (Python 3.9.1; Darwin)
+        sdk_language = "Python"  # This is the Python client
+        python_version = platform.python_version()
+        os_name = platform.system()
+        
+        user_agent = f"ThinkingSDK-{sdk_language}/{__version__} ({sdk_language} {python_version}; {os_name})"
+        
         session.headers.update({
             "Content-Type": "application/json",
-            "User-Agent": "ThinkingSDK-Client/1.0"
+            "User-Agent": user_agent,
+            "X-SDK-Language": sdk_language,
+            "X-SDK-Version": __version__
         })
         
         return session
