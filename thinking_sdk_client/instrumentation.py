@@ -475,76 +475,89 @@ class RuntimeInstrumentation:
     def _main_thread_exception_handler(self, exc_type, exc_value, exc_traceback) -> None:
         """Handle exceptions in main thread."""
         try:
-            if not self._active:
-                return
-            
-            # Check if this exception was already captured by sys.settrace (preferred)
-            if self._last_captured_exception:
-                last_type, last_message, last_time = self._last_captured_exception
-                if (exc_type == last_type and 
-                    str(exc_value) == last_message and 
-                    time.time() - last_time < 1.0):  # Within 1 second
-                    # Skip duplicate - sys.settrace already captured this exception
-                    return
-            
-            # Successfully capturing main thread exceptions via sys.excepthook
-            
-            # Extract actual file info from the deepest traceback frame
-            if exc_traceback:
-                # Get the last (deepest) frame from traceback
-                tb = exc_traceback
-                while tb.tb_next:
-                    tb = tb.tb_next
-                
-                actual_file = tb.tb_frame.f_code.co_filename
-                actual_line = tb.tb_lineno
-                actual_func = tb.tb_frame.f_code.co_name
-            else:
-                actual_file = "main_thread"
-                actual_line = 0
-                actual_func = "<module>"
-            
-            exc_info = {
-                "ts": time.time(),
-                "pid": os.getpid(),
-                "thread": threading.current_thread().name,
-                "event": "exception",
-                "exception": {
-                    "type": exc_type.__name__,
-                    "message": str(exc_value),
-                    "traceback": traceback.format_exception(exc_type, exc_value, exc_traceback),
-                    "structured_traceback": [
-                        {
-                            "file": tb.filename,
-                            "line": tb.lineno,
-                            "name": tb.name,
-                            "text": tb.line
-                        }
-                        for tb in traceback.extract_tb(exc_traceback)
-                    ]
-                },
-                "context": {"source": "sys_excepthook"},
-                "func": actual_func,
-                "file": str(Path(actual_file).name),  # Show real filename
-                "line": actual_line
-            }
-            
-            self.queue.push(exc_info)
-        except Exception as e:
+            if self._active:
+                # Check if this exception was already captured by sys.settrace (preferred)
+                if self._last_captured_exception:
+                    last_type, last_message, last_time = self._last_captured_exception
+                    if (exc_type == last_type and 
+                        str(exc_value) == last_message and 
+                        time.time() - last_time < 1.0):  # Within 1 second
+                        # Skip duplicate - sys.settrace already captured this exception
+                        # But still need to call original handler for normal Python display
+                        pass
+                    else:
+                        # New exception, capture it
+                        self._capture_main_thread_exception(exc_type, exc_value, exc_traceback)
+                else:
+                    # No previous capture, this is new
+                    self._capture_main_thread_exception(exc_type, exc_value, exc_traceback)
+        except Exception:
             # Silently fail - don't interfere with normal exception handling
             pass
         
-        # Call original handler to maintain normal Python behavior
-        if self._original_sys_excepthook:
+        # ALWAYS call original handler to maintain normal Python behavior
+        # If no original handler was stored, use sys.__excepthook__ (the default)
+        handler = self._original_sys_excepthook or sys.__excepthook__
+        if handler:
             try:
-                self._original_sys_excepthook(exc_type, exc_value, exc_traceback)
+                handler(exc_type, exc_value, exc_traceback)
             except Exception:
-                pass
+                # If all else fails, print the traceback ourselves
+                import sys
+                import traceback
+                traceback.print_exception(exc_type, exc_value, exc_traceback, file=sys.stderr)
+    
+    def _capture_main_thread_exception(self, exc_type, exc_value, exc_traceback) -> None:
+        """Capture exception details for ThinkingSDK."""
+        # Extract actual file info from the deepest traceback frame
+        if exc_traceback:
+            # Get the last (deepest) frame from traceback
+            tb = exc_traceback
+            while tb.tb_next:
+                tb = tb.tb_next
+            
+            actual_file = tb.tb_frame.f_code.co_filename
+            actual_line = tb.tb_lineno
+            actual_func = tb.tb_frame.f_code.co_name
+        else:
+            actual_file = "main_thread"
+            actual_line = 0
+            actual_func = "<module>"
+        
+        exc_info = {
+            "ts": time.time(),
+            "pid": os.getpid(),
+            "thread": threading.current_thread().name,
+            "event": "exception",
+            "exception": {
+                "type": exc_type.__name__,
+                "message": str(exc_value),
+                "traceback": traceback.format_exception(exc_type, exc_value, exc_traceback),
+                "structured_traceback": [
+                    {
+                        "file": tb.filename,
+                        "line": tb.lineno,
+                        "name": tb.name,
+                        "text": tb.line
+                    }
+                    for tb in traceback.extract_tb(exc_traceback)
+                ]
+            },
+            "context": {"source": "sys_excepthook"},
+            "func": actual_func,
+            "file": str(Path(actual_file).name),  # Show real filename
+            "line": actual_line
+        }
+        
+        self.queue.push(exc_info)
 
     def _thread_exception_handler(self, args) -> None:
         """Handle exceptions in threads."""
         try:
             if not self._active:
+                # Not active, but still call original handler
+                if self._original_excepthook:
+                    self._original_excepthook(args)
                 return
                 
             exc_info = {
@@ -563,13 +576,15 @@ class RuntimeInstrumentation:
             self.queue.push(exc_info)
         except Exception:
             pass
-            
-        # Call original handler if it exists
-        if self._original_excepthook:
-            try:
-                self._original_excepthook(args)
-            except Exception:
-                pass
+        finally:
+            # Always call original handler if it exists
+            # Use the stored original or fall back to default
+            handler = self._original_excepthook
+            if handler:
+                try:
+                    handler(args)
+                except Exception:
+                    pass
 
     def _handle_exception_event(self, frame, exc_info) -> Dict[str, Any]:
         """Handle exception events with enhanced context."""

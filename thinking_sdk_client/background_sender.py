@@ -268,7 +268,7 @@ class BackgroundSender:
                                 return True
                     else:
                         # API key authentication failed - this is fatal
-                        logging.error("ThinkingSDK: API key authentication failed")
+                        logging.debug("ThinkingSDK: API key authentication failed")
                         self._consecutive_failures += 1
                         return False
                     
