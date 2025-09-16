@@ -487,6 +487,44 @@ class RuntimeInstrumentation:
             return 'high'       # Fix within day
         
         return 'normal'         # Fix in next sprint
+    
+    def _add_repository_context(self, event_data: Dict[str, Any]) -> None:
+        """Add git repository context to an event for auto-fix functionality.
+        
+        Args:
+            event_data: The event dictionary to add repository context to (modified in place)
+        """
+        git_repositories = self._config.get('git_repositories', [])
+        if git_repositories:
+            # Use the first repository from the config
+            repo_url = git_repositories[0]
+            
+            # Extract repo name from URL (e.g., https://github.com/user/repo -> user/repo)
+            repo_full_name = None
+            if repo_url.startswith('https://github.com/'):
+                repo_full_name = repo_url.replace('https://github.com/', '').rstrip('/')
+                if repo_full_name.endswith('.git'):
+                    repo_full_name = repo_full_name[:-4]
+            elif repo_url.startswith('git@github.com:'):
+                repo_full_name = repo_url.replace('git@github.com:', '').rstrip('/')
+                if repo_full_name.endswith('.git'):
+                    repo_full_name = repo_full_name[:-4]
+            
+            event_data["repository_context"] = {
+                "git_repositories": git_repositories,  # Keep for backward compatibility
+                "repo_full_name": repo_full_name,
+                "branch": "main",  # Default branch, could be made configurable
+                "commit_hash": None,  # Would need git integration to get actual commit
+                "auto_fix_enabled": True
+            }
+        else:
+            event_data["repository_context"] = {
+                "git_repositories": [],
+                "repo_full_name": None,
+                "branch": None,
+                "commit_hash": None,
+                "auto_fix_enabled": False
+            }
         
     def _main_thread_exception_handler(self, exc_type, exc_value, exc_traceback) -> None:
         """Handle exceptions in main thread."""
@@ -603,6 +641,9 @@ class RuntimeInstrumentation:
             exc_info = self.integration_registry.get_all_context(exc_info)
         except Exception:
             pass  # Don't fail if framework context capture fails
+        
+        # Add git repository context for auto-fix (was missing for module-level exceptions)
+        self._add_repository_context(exc_info)
         
         self.queue.push(exc_info)
 
@@ -752,37 +793,7 @@ class RuntimeInstrumentation:
             ]
         
         # Add git repository context for auto-fix
-        git_repositories = self._config.get('git_repositories', [])
-        if git_repositories:
-            # Use the first repository from the config
-            repo_url = git_repositories[0]
-            
-            # Extract repo name from URL (e.g., https://github.com/user/repo -> user/repo)
-            repo_full_name = None
-            if repo_url.startswith('https://github.com/'):
-                repo_full_name = repo_url.replace('https://github.com/', '').rstrip('/')
-                if repo_full_name.endswith('.git'):
-                    repo_full_name = repo_full_name[:-4]
-            elif repo_url.startswith('git@github.com:'):
-                repo_full_name = repo_url.replace('git@github.com:', '').rstrip('/')
-                if repo_full_name.endswith('.git'):
-                    repo_full_name = repo_full_name[:-4]
-            
-            exception_data["repository_context"] = {
-                "git_repositories": git_repositories,  # Keep for backward compatibility
-                "repo_full_name": repo_full_name,
-                "branch": "main",  # Default branch, could be made configurable
-                "commit_hash": None,  # Would need git integration to get actual commit
-                "auto_fix_enabled": True
-            }
-        else:
-            exception_data["repository_context"] = {
-                "git_repositories": [],
-                "repo_full_name": None,
-                "branch": None,
-                "commit_hash": None,
-                "auto_fix_enabled": False
-            }
+        self._add_repository_context(exception_data)
         
         return exception_data
     
