@@ -22,6 +22,7 @@ Production-grade ThinkingSDK client. Usage inside user code:
     thinking.stop()
 """
 
+import os
 import logging
 import atexit
 from typing import Dict, Any, Optional
@@ -77,6 +78,12 @@ def start(
         RuntimeError: If SDK is already started
     """
     global _instrumentation, _sender, _queue, _config
+    
+    # Check for disable flag - this takes precedence over everything
+    if os.environ.get('THINKINGSDK_DISABLE_AUTO'):
+        if enable_logging:
+            logging.info("ThinkingSDK disabled by THINKINGSDK_DISABLE_AUTO environment variable")
+        return
     
     if _sender is not None:
         raise RuntimeError("ThinkingSDK is already started. Call stop() first.")

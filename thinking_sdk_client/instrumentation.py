@@ -699,6 +699,8 @@ class RuntimeInstrumentation:
         # Walk the traceback to capture variables at each frame
         current_tb = exc_tb
         tb_index = 0
+        prev_frame_sig = None  # For detecting recursive frames
+        
         while current_tb and tb_index < len(tb_list):
             tb_frame_info = tb_list[tb_index]
             frame_obj = current_tb.tb_frame
@@ -706,6 +708,34 @@ class RuntimeInstrumentation:
             # Capture all local and global variables for this frame
             frame_locals = self._capture_all_frame_variables(frame_obj.f_locals, 'locals')
             frame_globals = self._capture_all_frame_variables(frame_obj.f_globals, 'globals')
+            
+            # Determine if this frame is in-app code
+            file_path = tb_frame_info.filename
+            is_in_app = not any(pattern in file_path for pattern in [
+                '/site-packages/',
+                '/dist-packages/',
+                '/lib/python',
+                '/.venv/',
+                '/venv/',
+                '<frozen',
+                '<built-in',
+                '<string>',
+                '/opt/anaconda',
+                '/opt/homebrew',
+                '/usr/local/',
+                '/usr/lib/'
+            ])
+            
+            # Create frame signature for recursion detection
+            frame_sig = f"{tb_frame_info.filename}:{tb_frame_info.name}"
+            
+            # Skip if this is a recursive frame (same as previous)
+            if frame_sig == prev_frame_sig:
+                # Mark as recursive but still capture (collapsed in grouping)
+                is_recursive = True
+            else:
+                is_recursive = False
+                prev_frame_sig = frame_sig
             
             structured_traceback.append({
                 "file": tb_frame_info.filename,
@@ -715,7 +745,9 @@ class RuntimeInstrumentation:
                 "code": tb_frame_info.line,  # Actual line of code
                 "locals": frame_locals,  # All local variables in this frame
                 "globals": frame_globals,  # Relevant global variables in this frame
-                "frame_index": tb_index
+                "frame_index": tb_index,
+                "in_app": is_in_app,  # Mark if this is user code
+                "is_recursive": is_recursive  # Mark if this is a recursive call
             })
             
             current_tb = current_tb.tb_next
