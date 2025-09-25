@@ -285,10 +285,10 @@ class RuntimeInstrumentation:
             # Quick shutdown detection - Python is shutting down
             if not self._active or sys.meta_path is None:
                 return None
-                
+
             if event not in ("call", "return", "exception"):
                 return self._trace_calls
-                
+
             if not self.capture_returns and event == "return":
                 return self._trace_calls
                 
