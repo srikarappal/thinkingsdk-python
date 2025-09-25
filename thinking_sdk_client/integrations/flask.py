@@ -20,17 +20,21 @@ class FlaskIntegration(Integration):
         self.capture_session = options.get('capture_session', True)
     
     def setup_once(self):
-        """Hook into Flask to capture context."""
+        """Hook into Flask to capture context and add breadcrumbs."""
         try:
             import flask
             from flask import signals
-            
+
             # Hook into Flask's got_request_exception signal
             signals.got_request_exception.connect(self._handle_exception)
-            
+
+            # Hook into request lifecycle for breadcrumbs
+            signals.request_started.connect(self._on_request_started)
+            signals.request_finished.connect(self._on_request_finished)
+
             # Store Flask version for context
             self.flask_version = flask.__version__
-            
+
         except ImportError:
             pass
         except Exception:
@@ -251,3 +255,69 @@ class FlaskIntegration(Integration):
         safe_cookies = ['session', 'remember_token', 'locale', 'theme']
         return {k: '***' if k not in safe_cookies else v[:10] + '...' if len(v) > 10 else v
                 for k, v in cookies.items()}
+
+    def _on_request_started(self, sender, **kwargs):
+        """Add breadcrumb when request starts."""
+        try:
+            from flask import request
+            from .. import _breadcrumb_tracker
+
+            if not _breadcrumb_tracker:
+                return
+
+            # Build breadcrumb data
+            data = {
+                'method': request.method,
+                'url': request.url,
+                'endpoint': request.endpoint,
+                'view_args': dict(request.view_args) if request.view_args else None,
+            }
+
+            # Add query parameters if present
+            if request.args:
+                data['query_string'] = dict(request.args)
+
+            # Add breadcrumb
+            _breadcrumb_tracker.add_breadcrumb(
+                message=f"{request.method} {request.path}",
+                category="http",
+                level="info",
+                data=data
+            )
+
+        except Exception:
+            pass
+
+    def _on_request_finished(self, sender, response, **kwargs):
+        """Add breadcrumb when request finishes."""
+        try:
+            from flask import request
+            from .. import _breadcrumb_tracker
+
+            if not _breadcrumb_tracker:
+                return
+
+            # Build breadcrumb data
+            data = {
+                'status_code': response.status_code,
+                'reason': response.status,
+            }
+
+            # Determine level based on status code
+            if response.status_code >= 500:
+                level = "error"
+            elif response.status_code >= 400:
+                level = "warning"
+            else:
+                level = "info"
+
+            # Add breadcrumb
+            _breadcrumb_tracker.add_breadcrumb(
+                message=f"{request.method} {request.path} [{response.status_code}]",
+                category="http",
+                level=level,
+                data=data
+            )
+
+        except Exception:
+            pass

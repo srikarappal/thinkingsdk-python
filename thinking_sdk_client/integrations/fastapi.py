@@ -69,14 +69,25 @@ class FastAPIIntegration(Integration):
                     self.integration = integration
                 
                 async def dispatch(self, request: Request, call_next):
+                    # Track request start as breadcrumb
+                    self.integration._add_request_breadcrumb(request)
+
                     try:
                         # Store request in context for later use
                         self.integration._store_request_context(request)
                         response = await call_next(request)
+
+                        # Track request completion as breadcrumb
+                        self.integration._add_response_breadcrumb(request, response)
+
                         return response
                     except Exception as exc:
                         # Store exception context
                         self.integration._store_exception_context(request, exc)
+
+                        # Track error as breadcrumb
+                        self.integration._add_error_breadcrumb(request, exc)
+
                         raise
             
             # Store middleware class for app integration
@@ -335,3 +346,89 @@ class FastAPIIntegration(Integration):
             return body[:5]  # Only first 5 items
         else:
             return str(body)[:1000]  # Truncate long strings
+
+    def _add_request_breadcrumb(self, request):
+        """Add breadcrumb for request start."""
+        try:
+            from .. import _breadcrumb_tracker
+
+            if not _breadcrumb_tracker:
+                return
+
+            # Build breadcrumb data
+            data = {
+                'method': request.method,
+                'url': str(request.url),
+                'path': request.url.path,
+            }
+
+            # Add query parameters if present
+            if request.url.query:
+                data['query'] = request.url.query
+
+            # Add breadcrumb
+            _breadcrumb_tracker.add_breadcrumb(
+                message=f"{request.method} {request.url.path}",
+                category="http",
+                level="info",
+                data=data
+            )
+
+        except Exception:
+            pass
+
+    def _add_response_breadcrumb(self, request, response):
+        """Add breadcrumb for response."""
+        try:
+            from .. import _breadcrumb_tracker
+
+            if not _breadcrumb_tracker:
+                return
+
+            # Determine level based on status code
+            status_code = response.status_code
+            if status_code >= 500:
+                level = "error"
+            elif status_code >= 400:
+                level = "warning"
+            else:
+                level = "info"
+
+            # Add breadcrumb
+            _breadcrumb_tracker.add_breadcrumb(
+                message=f"{request.method} {request.url.path} [{status_code}]",
+                category="http",
+                level=level,
+                data={
+                    'status_code': status_code,
+                    'method': request.method,
+                    'path': request.url.path,
+                }
+            )
+
+        except Exception:
+            pass
+
+    def _add_error_breadcrumb(self, request, exc):
+        """Add breadcrumb for error."""
+        try:
+            from .. import _breadcrumb_tracker
+
+            if not _breadcrumb_tracker:
+                return
+
+            # Add breadcrumb
+            _breadcrumb_tracker.add_breadcrumb(
+                message=f"Error in {request.method} {request.url.path}: {type(exc).__name__}",
+                category="error",
+                level="error",
+                data={
+                    'method': request.method,
+                    'path': request.url.path,
+                    'error_type': type(exc).__name__,
+                    'error_message': str(exc),
+                }
+            )
+
+        except Exception:
+            pass

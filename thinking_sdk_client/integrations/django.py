@@ -36,17 +36,21 @@ class DjangoIntegration(Integration):
             from django.core import signals
             from django.core.handlers.exception import convert_exception_to_response
             import django
-            
+
             # Check Django is properly configured
             if not hasattr(django, 'setup'):
                 return
-                
+
             # Hook into Django's got_request_exception signal
             signals.got_request_exception.connect(self._handle_exception)
-            
+
+            # Hook into request signals for breadcrumbs
+            signals.request_started.connect(self._on_request_started)
+            signals.request_finished.connect(self._on_request_finished)
+
             # Store original exception handler
             self._original_exception_handler = convert_exception_to_response
-            
+
         except ImportError:
             pass
         except Exception:
@@ -268,3 +272,57 @@ class DjangoIntegration(Integration):
                 # Exclude USER, PASSWORD, etc.
             }
         return sanitized
+
+    def _on_request_started(self, sender, environ, **kwargs):
+        """Add breadcrumb when request starts."""
+        try:
+            from .. import _breadcrumb_tracker
+
+            if not _breadcrumb_tracker:
+                return
+
+            # Extract request info from environ
+            method = environ.get('REQUEST_METHOD', 'GET')
+            path = environ.get('PATH_INFO', '/')
+            query_string = environ.get('QUERY_STRING', '')
+
+            # Build breadcrumb data
+            data = {
+                'method': method,
+                'path': path,
+            }
+
+            if query_string:
+                data['query_string'] = query_string
+
+            # Add breadcrumb
+            _breadcrumb_tracker.add_breadcrumb(
+                message=f"{method} {path}",
+                category="http",
+                level="info",
+                data=data
+            )
+
+        except Exception:
+            pass
+
+    def _on_request_finished(self, sender, **kwargs):
+        """Add breadcrumb when request finishes."""
+        try:
+            from .. import _breadcrumb_tracker
+
+            if not _breadcrumb_tracker:
+                return
+
+            # Try to get response info if available
+            # Django's request_finished signal doesn't provide response details
+            # So we just mark completion
+            _breadcrumb_tracker.add_breadcrumb(
+                message="Request completed",
+                category="http",
+                level="info",
+                data={}
+            )
+
+        except Exception:
+            pass

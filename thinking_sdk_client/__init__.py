@@ -25,7 +25,7 @@ Production-grade ThinkingSDK client. Usage inside user code:
 import os
 import logging
 import atexit
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from ._version import __version__, __version_info__
 from .instrumentation import RuntimeInstrumentation
@@ -48,6 +48,7 @@ _deduplicator: Optional[EventDeduplicator] = None
 _pii_scrubber: Optional[PIIScrubber] = None
 _breadcrumb_tracker: Optional[BreadcrumbTracker] = None
 _custom_event_tracker: Optional[CustomEventTracker] = None
+_integrations: Optional[List] = None
 
 #TODO: rethink hard stopping exceptions for all methods (e.g. raise Exceptions)
 # This is a production-grade SDK, so we want to avoid raising exceptions
@@ -143,7 +144,66 @@ def start(
         # Create breadcrumb tracker
         global _breadcrumb_tracker
         _breadcrumb_tracker = BreadcrumbTracker(max_breadcrumbs=100)
-        
+
+        # Setup semantic event integrations for breadcrumbs
+        global _integrations
+        _integrations = []
+
+        # Add standard library integration (HTTP, subprocess)
+        from .integrations.stdlib import StdlibIntegration
+        stdlib_integration = StdlibIntegration()
+        stdlib_integration.setup_once()
+        _integrations.append(stdlib_integration)
+
+        # Add logging integration
+        from .integrations.logging import LoggingIntegration
+        logging_integration = LoggingIntegration(level=logging.DEBUG)
+        logging_integration.setup_once()
+        _integrations.append(logging_integration)
+
+        # Add console integration (print statements)
+        from .integrations.console import ConsoleIntegration
+        console_integration = ConsoleIntegration(capture_print=True)
+        console_integration.setup_once()
+        _integrations.append(console_integration)
+
+        # Try to add database integrations if available
+        try:
+            import sqlalchemy
+            from .integrations.sqlalchemy import SQLAlchemyIntegration
+            sqlalchemy_integration = SQLAlchemyIntegration(capture_params=False)
+            sqlalchemy_integration.setup_once()
+            _integrations.append(sqlalchemy_integration)
+        except ImportError:
+            pass  # SQLAlchemy not installed
+
+        try:
+            import psycopg2
+            from .integrations.psycopg2 import Psycopg2Integration
+            psycopg2_integration = Psycopg2Integration(capture_params=False)
+            psycopg2_integration.setup_once()
+            _integrations.append(psycopg2_integration)
+        except ImportError:
+            pass  # psycopg2 not installed
+
+        try:
+            import pymongo
+            from .integrations.pymongo import PyMongoIntegration
+            pymongo_integration = PyMongoIntegration(sanitize_queries=True)
+            pymongo_integration.setup_once()
+            _integrations.append(pymongo_integration)
+        except ImportError:
+            pass  # pymongo not installed
+
+        try:
+            import redis
+            from .integrations.redis_integration import RedisIntegration
+            redis_integration = RedisIntegration(max_data_size=100)
+            redis_integration.setup_once()
+            _integrations.append(redis_integration)
+        except ImportError:
+            pass  # redis not installed
+
         # Create custom event tracker
         global _custom_event_tracker
         _custom_event_tracker = CustomEventTracker(_queue, _breadcrumb_tracker)
