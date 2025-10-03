@@ -32,14 +32,30 @@ echo "----------------------------------------"
 
 docker exec -i $CONTAINER_NAME psql -U $DB_USER -d $DB_NAME <<EOF
 -- Drop tables in correct order (respecting foreign key constraints)
+-- Junction and mapping tables first
 DROP TABLE IF EXISTS event_exception_group_mapping CASCADE;
+DROP TABLE IF EXISTS github_repositories CASCADE;
+
+-- State and tracking tables
 DROP TABLE IF EXISTS autofix_state CASCADE;
+DROP TABLE IF EXISTS debug_steps CASCADE;
+DROP TABLE IF EXISTS llmCoder_messages CASCADE;
 DROP TABLE IF EXISTS fix_attempts CASCADE;
 DROP TABLE IF EXISTS fix_suggestions CASCADE;
+DROP TABLE IF EXISTS github_app_states CASCADE;
+DROP TABLE IF EXISTS insights CASCADE;
+DROP TABLE IF EXISTS metrics CASCADE;
+
+-- Core data tables
 DROP TABLE IF EXISTS events CASCADE;
 DROP TABLE IF EXISTS exception_groups CASCADE;
+
+-- Auth and session tables
 DROP TABLE IF EXISTS api_keys CASCADE;
 DROP TABLE IF EXISTS sessions CASCADE;
+DROP TABLE IF EXISTS web_sessions CASCADE;
+
+-- Base tables
 DROP TABLE IF EXISTS organizations CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
