@@ -4,7 +4,7 @@
 # API Configuration
 # Security: Never hardcode API keys. Use environment variables or secure key storage
 api_key_source: "env:THINKINGSDK_API_KEY"  # Required: Points to environment variable
-server_url: "${THINKINGSDK_SERVER_URL:-http://localhost:8000}"  # Optional: Override via env var
+server_url: "${THINKINGSDK_SERVER_URL:-http://localhost:8000}"  # Local dev. Production: https://api.thinkingsdk.ai
 environment: "${ENV:-development}"  # Used for filtering in dashboard
 
 # Git Repository Configuration for Auto-Fix

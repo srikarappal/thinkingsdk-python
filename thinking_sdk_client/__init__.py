@@ -112,7 +112,7 @@ def start(
     if api_key is None:
         api_key = config_loader.get_api_key()
     if server_url is None:
-        server_url = config_loader.get("server_url", "https://api.thinkingsdk.com")
+        server_url = config_loader.get("server_url", "https://api.thinkingsdk.ai")
     if enable_logging is None:
         enable_logging = config_loader.get("debug", False)
         
