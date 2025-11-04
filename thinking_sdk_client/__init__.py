@@ -192,8 +192,10 @@ def start(
             pymongo_integration = PyMongoIntegration(sanitize_queries=True)
             pymongo_integration.setup_once()
             _integrations.append(pymongo_integration)
-        except ImportError:
-            pass  # pymongo not installed
+        except (ImportError, Exception) as e:
+            if enable_logging:
+                logging.debug(f"Skipping pymongo integration: {e}")
+            pass  # pymongo not installed or incompatible
 
         try:
             import redis
