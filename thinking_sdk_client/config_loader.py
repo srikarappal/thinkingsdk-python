@@ -95,19 +95,22 @@ class ConfigLoader:
         if config_path:
             path = Path(config_path)
             if path.exists():
+                logger.info(f"Using explicit config file: {path}")
                 return path
             logger.warning(f"Config file not found: {config_path}")
             return None
-            
+
         # Search for thinkingsdk.yaml in current and parent directories
         current_dir = Path.cwd()
+        logger.debug(f"Searching for thinkingsdk.yaml starting from: {current_dir}")
+
         for directory in [current_dir] + list(current_dir.parents):
             config_file = directory / "thinkingsdk.yaml"
             if config_file.exists():
-                logger.debug(f"Found config file: {config_file}")
+                logger.info(f"Found config file: {config_file}")
                 return config_file
-                
-        logger.debug("No thinkingsdk.yaml found, using defaults")
+
+        logger.warning(f"No thinkingsdk.yaml found (searched from {current_dir} upwards). Using defaults - git_repositories will be empty!")
         return None
         
     def _load_config(self) -> Dict[str, Any]:
