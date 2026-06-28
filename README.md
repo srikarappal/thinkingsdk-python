@@ -39,14 +39,14 @@ Deeper call tracing and performance capture are available via config, off by def
 
 ThinkingSDK is built to stay off your application's hot path. The capture path is cheap and bounded; the network and the AI analysis happen elsewhere. What makes that true, in the client itself:
 
-- All sending runs on a background daemon thread, so capturing a crash queues it in microseconds and your request path is never blocked on network or analysis.
-- The in process buffer is a fixed size ring (a `deque` with `maxlen`) that drops the oldest event when full instead of applying back pressure, so a burst of errors can never stall your app or grow its memory.
-- Events go out in batches (default 50, or every couple of seconds), so network cost stays flat instead of one HTTP request per event.
-- A circuit breaker trips after repeated backend failures and pauses sending for a cooldown, so a slow or down analysis service cannot turn into retry pressure on your process.
-- Retries use bounded attempts with exponential backoff and a hard request timeout, all confined to the background thread, never your code.
-- Priority sampling always captures exceptions and errors while sampling routine, noisy events by rate, so you keep every crash without paying to ship everything.
-- A deduplicator collapses repeated crashes that share a call stack signature, so a hot error loop becomes one analyzed issue rather than thousands of identical sends.
-- The exception hooks sit idle until something actually throws, adding no per call or per line cost on the happy path; deeper call tracing and performance capture stay opt in.
+- **Background daemon thread**, sends off your request path; capture just enqueues in microseconds.
+- **Bounded ring buffer** (`deque(maxlen=…)`), drops oldest when full instead of back-pressuring, so a flood can't stall your app or grow memory.
+- **Batching** (50 events, or ~2s), flat network cost, not one request per event.
+- **Circuit breaker**, pauses sending after repeated backend failures, so a down service can't become retry pressure on you.
+- **Bounded retries + exponential backoff + hard request timeout**, all confined to the background thread.
+- **Priority sampling**, exceptions/errors always captured, routine events sampled by rate.
+- **Call-stack dedup**, a hot error loop collapses to one analyzed issue, not thousands of sends.
+- **Idle-until-throw hooks**, `excepthook` adds no per-call/per-line cost on the happy path; deeper tracing is opt-in.
 
 ## Framework and library integrations
 
