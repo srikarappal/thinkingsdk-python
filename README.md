@@ -35,6 +35,19 @@ ThinkingSDK installs exception hooks at startup:
 
 Deeper call tracing and performance capture are available via config, off by default to keep overhead near zero.
 
+## Performance
+
+ThinkingSDK is built to stay off your application's hot path. The capture path is cheap and bounded; the network and the AI analysis happen elsewhere. What makes that true, in the client itself:
+
+- All sending runs on a background daemon thread, so capturing a crash queues it in microseconds and your request path is never blocked on network or analysis.
+- The in process buffer is a fixed size ring (a `deque` with `maxlen`) that drops the oldest event when full instead of applying back pressure, so a burst of errors can never stall your app or grow its memory.
+- Events go out in batches (default 50, or every couple of seconds), so network cost stays flat instead of one HTTP request per event.
+- A circuit breaker trips after repeated backend failures and pauses sending for a cooldown, so a slow or down analysis service cannot turn into retry pressure on your process.
+- Retries use bounded attempts with exponential backoff and a hard request timeout, all confined to the background thread, never your code.
+- Priority sampling always captures exceptions and errors while sampling routine, noisy events by rate, so you keep every crash without paying to ship everything.
+- A deduplicator collapses repeated crashes that share a call stack signature, so a hot error loop becomes one analyzed issue rather than thousands of identical sends.
+- The exception hooks sit idle until something actually throws, adding no per call or per line cost on the happy path; deeper call tracing and performance capture stay opt in.
+
 ## Framework and library integrations
 
 Awareness for the stack you already run:
@@ -101,13 +114,6 @@ thinking.start(
 export THINKINGSDK_API_KEY=sk_live_...
 export THINKINGSDK_SERVER_URL=https://api.thinkingsdk.ai   # optional override
 ```
-
-## Overhead and safety
-
-- Exception hooks are effectively free until something actually throws.
-- Reports are batched and delivered on a background sender, never on the hot path.
-- `sample_rate` bounds volume on high traffic services.
-- No source code is sent: only the runtime event data you choose to capture.
 
 ## Self hosting
 
