@@ -1,4 +1,4 @@
-# thinking_sdk_client/instrumentation.py
+# thinkingsdk/instrumentation.py
 import sys
 import threading
 import traceback
@@ -29,7 +29,7 @@ class RuntimeInstrumentation:
     # Default patterns for files/functions to ignore
     DEFAULT_IGNORE_PATTERNS = {
         # Only ignore ThinkingSDK internal paths to prevent recursion
-        re.compile(r'/thinking_sdk_client/'),
+        re.compile(r'/thinkingsdk/'),
     }
     
     DEFAULT_IGNORE_FUNCTIONS = {
@@ -200,7 +200,7 @@ class RuntimeInstrumentation:
             'lib/python' not in filename and
             filename.endswith('.py') and
             # Exclude ThinkingSDK itself to prevent recursion
-            '/thinking_sdk_client/' not in filename
+            '/thinkingsdk/' not in filename
         )
     
     def _is_user_relevant_exception(self, frame, exc_info) -> bool:

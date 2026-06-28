@@ -8,7 +8,7 @@ import threading
 import unittest
 from unittest.mock import patch
 from typing import Dict, Any, Optional
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 
 
 class IsolatedTestCase(unittest.TestCase):
@@ -87,7 +87,7 @@ class MockNetworkTestCase(IsolatedTestCase):
         super().setUp()
         
         # Start patching requests
-        self.requests_patcher = patch('thinking_sdk_client.background_sender.requests.Session')
+        self.requests_patcher = patch('thinkingsdk.background_sender.requests.Session')
         self.mock_session_class = self.requests_patcher.start()
         
         # Create mock session with successful responses

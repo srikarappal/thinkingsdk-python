@@ -1,4 +1,4 @@
-# thinking_sdk_client/event_queue.py
+# thinkingsdk/event_queue.py
 import threading
 import time
 from collections import deque

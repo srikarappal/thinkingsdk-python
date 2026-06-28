@@ -78,11 +78,11 @@ def check_project_structure() -> bool:
     print("\n📁 Checking project structure...")
     
     required_files = [
-        "thinking_sdk_client/__init__.py",
-        "thinking_sdk_client/instrumentation.py",
-        "thinking_sdk_client/event_queue.py",
-        "thinking_sdk_client/background_sender.py",
-        "thinking_sdk_client/config.py",
+        "thinkingsdk/__init__.py",
+        "thinkingsdk/instrumentation.py",
+        "thinkingsdk/event_queue.py",
+        "thinkingsdk/background_sender.py",
+        "thinkingsdk/config.py",
         "thinking_sdk_server/server.py",
         "thinking_sdk_server/dashboard.py",
         "test_scenarios.py"
@@ -126,8 +126,8 @@ def test_thinking_sdk_import() -> bool:
     print("\n🧪 Testing ThinkingSDK import...")
     
     try:
-        import thinking_sdk_client as thinking
-        print("   ✅ thinking_sdk_client imported successfully")
+        import thinkingsdk as thinking
+        print("   ✅ thinkingsdk imported successfully")
         
         # Test basic functionality
         methods = ['start', 'stop', 'is_active', 'get_stats']
@@ -141,7 +141,7 @@ def test_thinking_sdk_import() -> bool:
         return True
         
     except ImportError as e:
-        print(f"   ❌ Failed to import thinking_sdk_client: {e}")
+        print(f"   ❌ Failed to import thinkingsdk: {e}")
         return False
 
 def check_server_status() -> Dict[str, Any]:
@@ -246,7 +246,7 @@ def run_quick_test() -> bool:
     print("\n🚀 Running quick functionality test...")
     
     try:
-        import thinking_sdk_client as thinking
+        import thinkingsdk as thinking
         
         # Test basic start/stop cycle
         print("   📍 Testing SDK start/stop cycle...")

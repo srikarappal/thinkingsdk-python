@@ -1,12 +1,12 @@
-# thinking_sdk_client/auto_instrument.py
+# thinkingsdk/auto_instrument.py
 """
 Auto-instrumentation module for zero-code ThinkingSDK activation.
 
 Usage:
     1. Set environment variable: THINKINGSDK_ENABLED=true
     2. Either:
-       - Add to sitecustomize.py: import thinking_sdk_client.auto_instrument
-       - Use -X importtime: python -X importtime=thinking_sdk_client.auto_instrument app.py
+       - Add to sitecustomize.py: import thinkingsdk.auto_instrument
+       - Use -X importtime: python -X importtime=thinkingsdk.auto_instrument app.py
        - Set PYTHONPATH to include this module
 """
 
@@ -71,10 +71,10 @@ def auto_start():
         
     try:
         # Import here to avoid circular dependencies
-        import thinking_sdk_client
+        import thinkingsdk
         
         # Check if already started
-        if thinking_sdk_client.is_active():
+        if thinkingsdk.is_active():
             return
             
         # Find configuration
@@ -88,7 +88,7 @@ def auto_start():
             return
             
         # Start with auto-discovery
-        thinking_sdk_client.start(
+        thinkingsdk.start(
             config_file=str(config_path) if config_path else None,
             enable_logging=os.environ.get('THINKINGSDK_DEBUG', '').lower() in ('true', '1')
         )
@@ -97,7 +97,7 @@ def auto_start():
         
         # Register cleanup on exit
         import atexit
-        atexit.register(thinking_sdk_client.stop)
+        atexit.register(thinkingsdk.stop)
         
     except Exception as e:
         # Never crash the application due to instrumentation

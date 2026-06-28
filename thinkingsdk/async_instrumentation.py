@@ -1,4 +1,4 @@
-# thinking_sdk_client/async_instrumentation.py
+# thinkingsdk/async_instrumentation.py
 """
 Async/await instrumentation support for ThinkingSDK.
 

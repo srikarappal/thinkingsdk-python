@@ -23,7 +23,7 @@ import psutil
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 
 
 class RealWorldTestSuite:

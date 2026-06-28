@@ -1,4 +1,4 @@
-# thinking_sdk_client/config_loader.py
+# thinkingsdk/config_loader.py
 import os
 import re
 import yaml

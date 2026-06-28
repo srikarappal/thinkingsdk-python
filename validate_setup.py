@@ -26,7 +26,7 @@ def check_imports() -> bool:
         ("openai", "OpenAI"),
         ("requests", "Requests"),
         ("pydantic", "Pydantic"),
-        ("thinking_sdk_client", "ThinkingSDK Client")
+        ("thinkingsdk", "ThinkingSDK Client")
     ]
     
     failed_imports = []
@@ -114,7 +114,7 @@ def run_end_to_end_test(verbose: bool = False) -> Dict[str, Any]:
     print("\n🧪 Running end-to-end test...")
     
     try:
-        import thinking_sdk_client as thinking
+        import thinkingsdk as thinking
         
         # Start SDK
         print("   📍 Starting SDK...")

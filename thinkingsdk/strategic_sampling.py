@@ -1,4 +1,4 @@
-# thinking_sdk_client/strategic_sampling.py
+# thinkingsdk/strategic_sampling.py
 """Strategic sampling and intelligent filtering for AI-agentic debugging."""
 
 import os

@@ -7,8 +7,8 @@ import threading
 import time
 from unittest.mock import Mock, patch, MagicMock
 from types import FrameType
-from thinking_sdk_client.instrumentation import RuntimeInstrumentation
-from thinking_sdk_client.event_queue import EventQueue
+from thinkingsdk.instrumentation import RuntimeInstrumentation
+from thinkingsdk.event_queue import EventQueue
 
 
 class TestRuntimeInstrumentation(unittest.TestCase):

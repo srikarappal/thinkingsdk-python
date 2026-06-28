@@ -9,7 +9,7 @@ Test all new client features:
 - Compression
 """
 
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 import time
 import random
 from typing import Optional

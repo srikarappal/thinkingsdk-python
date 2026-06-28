@@ -1,4 +1,4 @@
-# thinking_sdk_client/context.py
+# thinkingsdk/context.py
 """
 Context propagation for request IDs, user IDs, and custom metadata.
 

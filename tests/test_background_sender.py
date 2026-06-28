@@ -6,8 +6,8 @@ import time
 import json
 from unittest.mock import Mock, patch, MagicMock
 import requests
-from thinking_sdk_client.background_sender import BackgroundSender
-from thinking_sdk_client.event_queue import EventQueue
+from thinkingsdk.background_sender import BackgroundSender
+from thinkingsdk.event_queue import EventQueue
 from tests.test_utils import IsolatedTestCase, MockNetworkTestCase
 
 
@@ -248,7 +248,7 @@ class TestBackgroundSender(MockNetworkTestCase):
         self.assertEqual(stats['total_sent'], 0)
         self.assertEqual(stats['total_failed'], 0)
 
-    @patch('thinking_sdk_client.background_sender.logging')
+    @patch('thinkingsdk.background_sender.logging')
     def test_error_logging(self, mock_logging):
         """Test error logging functionality."""
         sender = BackgroundSender(self.queue, self.api_key, self.server_url)

@@ -1,4 +1,4 @@
-# thinking_sdk_client/config.py
+# thinkingsdk/config.py
 """Configuration management for ThinkingSDK client."""
 
 import os

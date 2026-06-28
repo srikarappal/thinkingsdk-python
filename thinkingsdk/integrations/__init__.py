@@ -35,9 +35,9 @@ class IntegrationRegistry:
     def auto_detect_frameworks(self):
         """Auto-detect installed frameworks and load integrations."""
         framework_map = {
-            'django': 'thinking_sdk_client.integrations.django.DjangoIntegration',
-            'flask': 'thinking_sdk_client.integrations.flask.FlaskIntegration',
-            'fastapi': 'thinking_sdk_client.integrations.fastapi.FastAPIIntegration',
+            'django': 'thinkingsdk.integrations.django.DjangoIntegration',
+            'flask': 'thinkingsdk.integrations.flask.FlaskIntegration',
+            'fastapi': 'thinkingsdk.integrations.fastapi.FastAPIIntegration',
         }
         
         for package, integration_path in framework_map.items():

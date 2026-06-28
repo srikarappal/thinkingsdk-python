@@ -7,7 +7,7 @@ import time
 import threading
 import json
 from unittest.mock import Mock, MagicMock, patch
-from thinking_sdk_client.custom_events import BreadcrumbTracker, CustomEventTracker, Timer
+from thinkingsdk.custom_events import BreadcrumbTracker, CustomEventTracker, Timer
 
 
 class TestBreadcrumbTracker:
@@ -356,7 +356,7 @@ class TestCustomEventTracker:
         stats["custom_events"] = 999
         assert tracker.stats["custom_events"] == 2
         
-    @patch('thinking_sdk_client.custom_events.inspect.currentframe')
+    @patch('thinkingsdk.custom_events.inspect.currentframe')
     def test_track_event_caller_info(self, mock_frame):
         """Test that caller information is captured."""
         queue = Mock()
@@ -380,7 +380,7 @@ class TestCustomEventTracker:
         assert event["file_path"] == "/path/to/test.py"
         assert event["line"] == 42
         
-    @patch('thinking_sdk_client.custom_events.inspect.currentframe')
+    @patch('thinkingsdk.custom_events.inspect.currentframe')
     def test_track_event_no_frame(self, mock_frame):
         """Test handling when frame info is not available."""
         queue = Mock()
@@ -474,7 +474,7 @@ class TestIntegration:
     
     def test_exception_with_breadcrumbs(self):
         """Test that breadcrumbs are attached to exception events."""
-        from thinking_sdk_client.event_queue import EventQueue
+        from thinkingsdk.event_queue import EventQueue
         
         queue = EventQueue()
         breadcrumb_tracker = BreadcrumbTracker()
@@ -504,7 +504,7 @@ class TestIntegration:
         
     def test_full_workflow(self):
         """Test complete workflow with events and breadcrumbs."""
-        from thinking_sdk_client.event_queue import EventQueue
+        from thinkingsdk.event_queue import EventQueue
         
         queue = EventQueue()
         breadcrumb_tracker = BreadcrumbTracker(max_breadcrumbs=10)
@@ -549,7 +549,7 @@ class TestIntegration:
         
     def test_thread_safety_integration(self):
         """Test thread-safe operation of custom events."""
-        from thinking_sdk_client.event_queue import EventQueue
+        from thinkingsdk.event_queue import EventQueue
         
         queue = EventQueue()
         breadcrumb_tracker = BreadcrumbTracker()

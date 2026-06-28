@@ -31,9 +31,9 @@ from contextlib import contextmanager
 
 # Import ThinkingSDK
 try:
-    import thinking_sdk_client as thinking
+    import thinkingsdk as thinking
 except ImportError:
-    print("ERROR: thinking_sdk_client not found. Make sure it's installed.")
+    print("ERROR: thinkingsdk not found. Make sure it's installed.")
     sys.exit(1)
 
 

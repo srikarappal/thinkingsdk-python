@@ -1,8 +1,8 @@
-# thinking_sdk_client/__init__.py
+# thinkingsdk/__init__.py
 """
 Production-grade ThinkingSDK client. Usage inside user code:
 
-    import thinking_sdk_client as thinking
+    import thinkingsdk as thinking
     
     # Basic usage
     thinking.start(api_key="sk_live_XXXX")

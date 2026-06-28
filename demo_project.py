@@ -20,9 +20,9 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
 
 try:
-    import thinking_sdk_client as thinking
+    import thinkingsdk as thinking
 except ImportError:
-    print("❌ ERROR: Cannot import thinking_sdk_client")
+    print("❌ ERROR: Cannot import thinkingsdk")
     print("   Make sure you're running from the ThinkingSDK directory")
     print("   Or install with: pip install -e .")
     sys.exit(1)
