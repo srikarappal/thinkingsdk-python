@@ -66,8 +66,9 @@ Changelog = "https://github.com/thinkingsdk/thinking-sdk-python/blob/main/CHANGE
 thinking = "thinking_sdk_client.cli:main"
 thinking-validate = "thinking_sdk_client.validate:main"
 
-[tool.setuptools]
-packages = ["thinking_sdk_client", "thinking_sdk_server"]
+[tool.setuptools.packages.find]
+include = ["thinking_sdk_client*"]
+namespaces = false
 
 [tool.setuptools.package-data]
 thinking_sdk_client = ["*.yaml", "*.yml"]
@@ -89,7 +90,7 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short"
 
 [tool.coverage.run]
-source = ["thinking_sdk_client", "thinking_sdk_server"]
+source = ["thinking_sdk_client"]
 omit = ["*/tests/*", "*/test_*.py"]
 
 [tool.coverage.report]
