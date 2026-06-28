@@ -4,7 +4,7 @@
 import unittest
 import os
 from unittest.mock import patch
-from thinking_sdk_client.config import Config
+from thinkingsdk.config import Config
 from tests.test_utils import IsolatedTestCase
 
 

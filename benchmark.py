@@ -17,9 +17,9 @@ from typing import List, Dict, Any, Callable
 from contextlib import contextmanager
 
 try:
-    import thinking_sdk_client as thinking
+    import thinkingsdk as thinking
 except ImportError:
-    print("ERROR: thinking_sdk_client not found. Make sure it's installed.")
+    print("ERROR: thinkingsdk not found. Make sure it's installed.")
     sys.exit(1)
 
 

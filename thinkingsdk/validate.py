@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-# thinking_sdk_client/validate.py
+# thinkingsdk/validate.py
 """
 Deployment validation and diagnostic tools for ThinkingSDK.
 
 Usage:
-    python -m thinking_sdk_client.validate
+    python -m thinkingsdk.validate
     
     Or programmatically:
-    from thinking_sdk_client.validate import validate_deployment
+    from thinkingsdk.validate import validate_deployment
     validate_deployment()
 """
 
@@ -102,8 +102,8 @@ class DeploymentValidator:
     def check_installation(self) -> None:
         """Check if ThinkingSDK is properly installed."""
         try:
-            import thinking_sdk_client
-            version = getattr(thinking_sdk_client, '__version__', 'unknown')
+            import thinkingsdk
+            version = getattr(thinkingsdk, '__version__', 'unknown')
             
             self.results.append(ValidationResult(
                 "ThinkingSDK Installation",
@@ -115,7 +115,7 @@ class DeploymentValidator:
                 "ThinkingSDK Installation",
                 False,
                 "Not installed",
-                f"Run: pip install thinking-sdk-client"
+                f"Run: pip install thinkingsdk"
             ))
     
     def check_dependencies(self) -> None:
@@ -300,10 +300,10 @@ class DeploymentValidator:
     def check_instrumentation(self) -> None:
         """Test basic instrumentation."""
         try:
-            import thinking_sdk_client
+            import thinkingsdk
             
             # Start instrumentation
-            thinking_sdk_client.start()
+            thinkingsdk.start()
             
             # Test function
             def test_func():
@@ -312,9 +312,9 @@ class DeploymentValidator:
             result = test_func()
             
             # Get stats
-            stats = thinking_sdk_client.get_stats()
+            stats = thinkingsdk.get_stats()
             
-            thinking_sdk_client.stop()
+            thinkingsdk.stop()
             
             if stats.get('instrumentation', {}).get('active'):
                 self.results.append(ValidationResult(
@@ -341,13 +341,13 @@ class DeploymentValidator:
     def send_test_event(self) -> None:
         """Send a test event to the server."""
         try:
-            import thinking_sdk_client
+            import thinkingsdk
             from .config_loader import ConfigLoader
             
             loader = ConfigLoader(self.config_file)
             
             # Start SDK
-            thinking_sdk_client.start(config_file=self.config_file)
+            thinkingsdk.start(config_file=self.config_file)
             
             # Generate test event
             def test_function():
@@ -362,10 +362,10 @@ class DeploymentValidator:
             time.sleep(2)
             
             # Check if event was queued
-            stats = thinking_sdk_client.get_stats()
+            stats = thinkingsdk.get_stats()
             event_count = stats.get('queue', {}).get('total_pushed', 0)
             
-            thinking_sdk_client.stop()
+            thinkingsdk.stop()
             
             if event_count > 0:
                 self.results.append(ValidationResult(
@@ -442,7 +442,7 @@ def diagnose_issue(error_message: str) -> str:
     diagnostics = {
         "api_key": "Set THINKINGSDK_API_KEY environment variable or configure api_key_source in thinkingsdk.yaml",
         "connection": "Check if ThinkingSDK server is running and accessible",
-        "import": "Install ThinkingSDK: pip install thinking-sdk-client",
+        "import": "Install ThinkingSDK: pip install thinkingsdk",
         "permission": "Check file permissions and ensure the process has write access",
         "config": "Check YAML syntax in thinkingsdk.yaml",
     }

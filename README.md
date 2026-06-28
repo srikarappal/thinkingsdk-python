@@ -2,7 +2,7 @@
 
 **AI-powered runtime debugging that actually understands your code**
 
-[![PyPI version](https://badge.fury.io/py/thinking-sdk-client.svg)](https://badge.fury.io/py/thinking-sdk-client)
+[![PyPI version](https://badge.fury.io/py/thinkingsdk.svg)](https://badge.fury.io/py/thinkingsdk)
 [![Python](https://img.shields.io/badge/python-3.7%2B-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -48,7 +48,7 @@ streamlit run thinking_sdk_server/dashboard.py
 ### 2. Instrument Your Code
 
 ```python
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 
 # Start capturing runtime events
 thinking.start(
@@ -76,7 +76,7 @@ Within ~5 seconds, check your dashboard at http://localhost:8501 to see:
 ## Example: Real Error Analysis
 
 ```python
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 thinking.start(api_key="sk_live_your_key", server_url="http://localhost:8000")
 
 def calculate_average(numbers):
@@ -138,7 +138,7 @@ export OPENAI_API_KEY=sk-your-openai-key
 
 ### Development Debugging
 ```python
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 thinking.start()
 
 # Debug complex data processing
@@ -207,7 +207,7 @@ streamlit run thinking_sdk_server/dashboard.py &
 
 # Test it
 python -c "
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 thinking.start(api_key='sk_live_test', server_url='http://localhost:8000')
 int('abc')  # This error gets AI analysis!
 "

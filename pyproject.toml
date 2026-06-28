@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "thinking-sdk-client"
+name = "thinkingsdk"
 version = "0.1.0"
 description = "AI-powered runtime debugging and insights for Python applications"
 readme = "README.md"
@@ -63,14 +63,15 @@ Issues = "https://github.com/thinkingsdk/thinking-sdk-python/issues"
 Changelog = "https://github.com/thinkingsdk/thinking-sdk-python/blob/main/CHANGELOG.md"
 
 [project.scripts]
-thinking = "thinking_sdk_client.cli:main"
-thinking-validate = "thinking_sdk_client.validate:main"
+thinking = "thinkingsdk.cli:main"
+thinking-validate = "thinkingsdk.validate:main"
 
-[tool.setuptools]
-packages = ["thinking_sdk_client", "thinking_sdk_server"]
+[tool.setuptools.packages.find]
+include = ["thinkingsdk*"]
+namespaces = false
 
 [tool.setuptools.package-data]
-thinking_sdk_client = ["*.yaml", "*.yml"]
+thinkingsdk = ["*.yaml", "*.yml"]
 
 [tool.black]
 line-length = 100
@@ -89,7 +90,7 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short"
 
 [tool.coverage.run]
-source = ["thinking_sdk_client", "thinking_sdk_server"]
+source = ["thinkingsdk"]
 omit = ["*/tests/*", "*/test_*.py"]
 
 [tool.coverage.report]

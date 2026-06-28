@@ -4,7 +4,7 @@ Example: Using ThinkingSDK with YAML configuration
 """
 
 import os
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 
 
 def main():

@@ -5,7 +5,7 @@ import unittest
 import time
 import threading
 from unittest.mock import patch, Mock
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 from tests.test_utils import MockNetworkTestCase, ThreadSafeTestCase, start_test_sdk, assert_stats_valid
 
 
@@ -211,7 +211,7 @@ class TestThinkingSDKIntegration(MockNetworkTestCase):
         
         thinking.stop()
 
-    @patch('thinking_sdk_client.logging.basicConfig')
+    @patch('thinkingsdk.logging.basicConfig')
     def test_logging_configuration(self, mock_logging_config):
         """Test logging configuration."""
         # Test with logging enabled

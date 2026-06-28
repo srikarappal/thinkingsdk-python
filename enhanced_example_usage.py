@@ -4,7 +4,7 @@ Enhanced ThinkingSDK Usage Examples - Showcasing Comprehensive Runtime Intellige
 """
 
 import time
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 
 
 def demo_comprehensive_tracking():

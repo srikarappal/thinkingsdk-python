@@ -4,7 +4,7 @@
 import unittest
 import threading
 import time
-from thinking_sdk_client.event_queue import EventQueue
+from thinkingsdk.event_queue import EventQueue
 
 
 class TestEventQueue(unittest.TestCase):

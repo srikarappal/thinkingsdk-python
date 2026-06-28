@@ -1,4 +1,4 @@
-# thinking_sdk_client/performance_monitor.py
+# thinkingsdk/performance_monitor.py
 """
 Performance monitoring and overhead control for ThinkingSDK.
 
@@ -250,8 +250,8 @@ def benchmark_instrumentation_overhead():
     )
     
     # Start instrumentation
-    import thinking_sdk_client
-    thinking_sdk_client.start()
+    import thinkingsdk
+    thinkingsdk.start()
     
     # Benchmark with instrumentation
     with_time = timeit.timeit(
@@ -259,7 +259,7 @@ def benchmark_instrumentation_overhead():
         number=10000
     )
     
-    thinking_sdk_client.stop()
+    thinkingsdk.stop()
     
     # Calculate overhead
     overhead_ms = ((with_time - without_time) / 10000) * 1000
@@ -276,11 +276,11 @@ def benchmark_instrumentation_overhead():
     # Measure memory without
     mem_before = process.memory_info().rss / (1024 * 1024)
     
-    thinking_sdk_client.start()
+    thinkingsdk.start()
     time.sleep(1)  # Let it stabilize
     
     mem_after = process.memory_info().rss / (1024 * 1024)
-    thinking_sdk_client.stop()
+    thinkingsdk.stop()
     
     results['memory_overhead_mb'] = mem_after - mem_before
     

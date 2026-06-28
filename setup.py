@@ -7,7 +7,7 @@ Install locally with:
 
 Or build and install:
     python setup.py sdist bdist_wheel
-    pip install dist/thinking-sdk-client-*.whl
+    pip install dist/thinkingsdk-*.whl
 """
 
 from setuptools import setup, find_packages
@@ -16,7 +16,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="thinking-sdk-client",
+    name="thinkingsdk",
     version="0.1.0",
     author="Your Name",
     author_email="your.email@example.com",
@@ -51,11 +51,11 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "thinking-sdk=thinking_sdk_client.cli:main",
+            "thinking-sdk=thinkingsdk.cli:main",
         ],
     },
     package_data={
-        "thinking_sdk_client": ["*.json", "*.yaml", "*.yml"],
+        "thinkingsdk": ["*.json", "*.yaml", "*.yml"],
     },
     include_package_data=True,
     zip_safe=False,

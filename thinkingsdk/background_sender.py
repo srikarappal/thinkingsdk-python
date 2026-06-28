@@ -1,4 +1,4 @@
-# thinking_sdk_client/background_sender.py
+# thinkingsdk/background_sender.py
 import json
 import time
 import logging

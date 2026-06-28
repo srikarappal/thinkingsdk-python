@@ -16,7 +16,7 @@ import os
 # Only instrument if explicitly enabled
 if os.environ.get('THINKINGSDK_ENABLED', '').lower() in ('true', '1', 'yes', 'on'):
     try:
-        import thinking_sdk_client.auto_instrument
+        import thinkingsdk.auto_instrument
     except ImportError:
         # ThinkingSDK not installed, skip silently
         pass

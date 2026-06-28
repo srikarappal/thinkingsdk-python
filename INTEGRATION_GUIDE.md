@@ -11,7 +11,7 @@ This guide shows you how to integrate ThinkingSDK into your own Python projects.
 pip install -e .
 
 # Verify installation
-python -c "import thinking_sdk_client; print('ThinkingSDK installed successfully!')"
+python -c "import thinkingsdk; print('ThinkingSDK installed successfully!')"
 ```
 
 ### Option 2: Direct Path Import (Quick Testing)
@@ -19,12 +19,12 @@ python -c "import thinking_sdk_client; print('ThinkingSDK installed successfully
 ```python
 import sys
 sys.path.append('/path/to/your/thinkingSDK/directory')
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 ```
 
 ### Option 3: Copy Client Files (Simple Projects)
 
-Copy the entire `thinking_sdk_client/` directory into your project and import directly.
+Copy the entire `thinkingsdk/` directory into your project and import directly.
 
 ## Server Setup
 
@@ -54,7 +54,7 @@ curl http://localhost:8000/health
 ```python
 # my_flask_app.py
 from flask import Flask, request, jsonify
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 
 app = Flask(__name__)
 
@@ -98,7 +98,7 @@ if __name__ == '__main__':
 
 ```python
 # settings.py
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 
 # Start ThinkingSDK in Django settings
 thinking.start(
@@ -142,7 +142,7 @@ def get_user_profile(user_id):
 
 # apps.py
 from django.apps import AppConfig
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 
 class MyAppConfig(AppConfig):
     def ready(self):
@@ -160,7 +160,7 @@ class MyAppConfig(AppConfig):
 # main.py
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -321,7 +321,7 @@ thinking.start(
 ### Check SDK Status
 
 ```python
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 
 # Check if SDK is active
 if thinking.is_active():
@@ -375,7 +375,7 @@ except Exception as e:
 
 **1. Import Error**
 ```
-ModuleNotFoundError: No module named 'thinking_sdk_client'
+ModuleNotFoundError: No module named 'thinkingsdk'
 ```
 **Solution**: Install with `pip install -e .` from ThinkingSDK directory
 
@@ -402,7 +402,7 @@ Exceptions occur but no insights appear
 ```python
 # Measure performance impact
 import time
-import thinking_sdk_client as thinking
+import thinkingsdk as thinking
 
 def benchmark_function():
     # Your code here

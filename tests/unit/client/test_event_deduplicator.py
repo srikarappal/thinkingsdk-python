@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
 @pytest.fixture
 def deduplicator():
     """Create an EventDeduplicator instance."""
-    from thinking_sdk_client.event_deduplicator import EventDeduplicator
+    from thinkingsdk.event_deduplicator import EventDeduplicator
     return EventDeduplicator()
 
 
@@ -44,7 +44,7 @@ class TestEventDeduplicator:
     
     def test_init_default_config(self):
         """Test initialization with default config."""
-        from thinking_sdk_client.event_deduplicator import EventDeduplicator
+        from thinkingsdk.event_deduplicator import EventDeduplicator
         dedup = EventDeduplicator()
         
         assert dedup.window_size_ms == 1000
@@ -55,7 +55,7 @@ class TestEventDeduplicator:
         
     def test_init_custom_config(self):
         """Test initialization with custom config."""
-        from thinking_sdk_client.event_deduplicator import EventDeduplicator
+        from thinkingsdk.event_deduplicator import EventDeduplicator
         config = {
             'window_size_ms': 2000,
             'max_patterns': 500,
@@ -334,7 +334,7 @@ class TestCallStackPattern:
     
     def test_pattern_creation(self):
         """Test creating a call stack pattern."""
-        from thinking_sdk_client.event_deduplicator import CallStackPattern
+        from thinkingsdk.event_deduplicator import CallStackPattern
         
         call_stack = [
             {'file': 'main.py', 'func': 'main', 'line': 10},
@@ -348,7 +348,7 @@ class TestCallStackPattern:
         
     def test_add_occurrence(self):
         """Test adding occurrences to a pattern."""
-        from thinking_sdk_client.event_deduplicator import CallStackPattern
+        from thinkingsdk.event_deduplicator import CallStackPattern
         
         pattern = CallStackPattern('test_hash', [])
         
@@ -365,7 +365,7 @@ class TestCallStackPattern:
         
     def test_pattern_to_dict(self):
         """Test converting pattern to dictionary."""
-        from thinking_sdk_client.event_deduplicator import CallStackPattern
+        from thinkingsdk.event_deduplicator import CallStackPattern
         
         call_stack = [{'file': 'test.py', 'func': 'test'}]
         pattern = CallStackPattern('test_hash', call_stack)
@@ -387,7 +387,7 @@ class TestCallStackPattern:
         
     def test_pattern_variations(self):
         """Test detection of variations in occurrences."""
-        from thinking_sdk_client.event_deduplicator import CallStackPattern
+        from thinkingsdk.event_deduplicator import CallStackPattern
         
         pattern = CallStackPattern('test_hash', [])
         
