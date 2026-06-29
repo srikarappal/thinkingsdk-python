@@ -13,7 +13,10 @@ pip install thinkingsdk
 ```python
 import thinkingsdk as thinking
 
-thinking.start(api_key="sk_live_...")   # the whole integration
+thinking.start(
+    api_key="sk_live_...",
+    server_url="https://api.thinkingsdk.ai",  # hosted service; the SDK otherwise defaults to localhost
+)
 ```
 
 That is it. Deploy. When your app throws an unhandled exception, in a request handler, a worker thread, or a background job, ThinkingSDK captures it with full context, analyzes it, and shows you the diagnosis in your dashboard at [thinkingsdk.ai](https://thinkingsdk.ai). Get your project key there.
@@ -62,7 +65,7 @@ Awareness for the stack you already run:
 import thinkingsdk as thinking
 from fastapi import FastAPI
 
-thinking.start(api_key="sk_live_...")
+thinking.start(api_key="sk_live_...", server_url="https://api.thinkingsdk.ai")
 
 app = FastAPI()
 
@@ -94,12 +97,13 @@ Suggested fix:
 `thinking.start()` accepts:
 
 - `api_key`: your project key from [thinkingsdk.ai](https://thinkingsdk.ai)
-- `server_url`: defaults to the hosted service (`https://api.thinkingsdk.ai`); point it at your own deployment to self host
+- `server_url`: set this to `https://api.thinkingsdk.ai` for the hosted service (or via `THINKINGSDK_SERVER_URL`). It defaults to `http://localhost:8000` for local dev, so crashes won't reach the hosted dashboard unless you set it.
 - `config`: a dict of tuning options
 
 ```python
 thinking.start(
     api_key="sk_live_...",
+    server_url="https://api.thinkingsdk.ai",
     config={
         "capture_exceptions": True,
         "capture_performance": False,
@@ -112,12 +116,12 @@ thinking.start(
 
 ```bash
 export THINKINGSDK_API_KEY=sk_live_...
-export THINKINGSDK_SERVER_URL=https://api.thinkingsdk.ai   # optional override
+export THINKINGSDK_SERVER_URL=https://api.thinkingsdk.ai   # required for the hosted service (defaults to localhost)
 ```
 
 ## Self hosting
 
-The analysis service (the AI engine and dashboard) runs as a separate component. To use your own instead of the hosted service, point `server_url` at your deployment. See [thinkingsdk.ai](https://thinkingsdk.ai) for details.
+The analysis service (the AI engine and dashboard) runs as a separate component. `server_url` selects which one: `https://api.thinkingsdk.ai` for the hosted service, or your own deployment. The SDK's built-in default is `http://localhost:8000` (local dev), so set `server_url` for anything else. See [thinkingsdk.ai](https://thinkingsdk.ai) for details.
 
 ## License
 
