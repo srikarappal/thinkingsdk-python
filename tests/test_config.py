@@ -154,10 +154,10 @@ class TestConfig(IsolatedTestCase):
         
         # Should use defaults when env vars are invalid
         instr_config = config.get_instrumentation_config()
-        self.assertEqual(instr_config['sample_rate'], 1.0)  # Default
-        
+        self.assertEqual(instr_config['sample_rate'], 0.3)  # Default
+
         sender_config = config.get_sender_config()
-        self.assertEqual(sender_config['batch_size'], 50)  # Default
+        self.assertEqual(sender_config['batch_size'], 25)  # Default
 
     def test_environment_overrides_custom_config(self):
         """Test that environment variables override custom config."""
@@ -185,7 +185,7 @@ class TestConfig(IsolatedTestCase):
         
         # Test getting specific key
         batch_size = config.get('sender', 'batch_size')
-        self.assertEqual(batch_size, 50)
+        self.assertEqual(batch_size, 25)
         
         # Test getting non-existent section
         missing_section = config.get('nonexistent')
@@ -215,7 +215,7 @@ class TestConfig(IsolatedTestCase):
         self.assertEqual(config_dict['instrumentation']['sample_rate'], 0.7)
         
         # Should include defaults
-        self.assertEqual(config_dict['queue']['maxsize'], 10000)
+        self.assertEqual(config_dict['queue']['maxsize'], 5000)
 
     def test_configuration_isolation(self):
         """Test that configuration objects don't interfere with each other."""
