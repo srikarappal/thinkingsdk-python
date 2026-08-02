@@ -47,6 +47,9 @@ dev = [
 performance = [
     "psutil>=5.9",
 ]
+keyring = [
+    "keyring>=24.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/srikarappal/thinkingsdk-python"
