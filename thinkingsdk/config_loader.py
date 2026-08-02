@@ -5,7 +5,11 @@ import yaml
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
-import keyring
+
+try:
+    import keyring
+except ImportError:  # optional: only needed for the `keyring:` api_key_source
+    keyring = None
 
 # Automatically load .env file if available
 try:
@@ -219,6 +223,11 @@ class ConfigLoader:
                 return api_key
                 
             elif source.startswith("keyring:"):
+                if keyring is None:
+                    raise ValueError(
+                        "api_key_source uses 'keyring:' but the 'keyring' package is not installed. "
+                        "Install it with: pip install thinkingsdk[keyring]"
+                    )
                 service = source[8:]
                 try:
                     api_key = keyring.get_password(service, "api_key")
