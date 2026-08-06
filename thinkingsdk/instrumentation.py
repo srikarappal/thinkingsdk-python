@@ -1,4 +1,5 @@
 # thinkingsdk/instrumentation.py
+import logging
 import sys
 import threading
 import traceback
@@ -151,8 +152,36 @@ class RuntimeInstrumentation:
             self._original_excepthook = threading.excepthook
             self._original_sys_excepthook = sys.excepthook
             
-            # Install new hooks
-            sys.settrace(self._trace_calls)
+            # Install new hooks.
+            #
+            # PEP 669 (Python 3.12+): subscribe to RAISE only. sys.settrace fires on EVERY function
+            # call, line and return in the thread, and this callback allocates per event, which
+            # measured 467x on a tight loop and ~80% of a CPU core sustained on a real workload
+            # (see issue #10). sys.monitoring charges nothing for events we do not subscribe to, and
+            # the default config is exceptions_only anyway, so RAISE is all we need.
+            #
+            # It also fixes a coverage gap: sys.settrace only instruments the thread that called
+            # start(), while sys.monitoring applies process-wide.
+            self._monitoring_tool_id = None
+            if sys.version_info >= (3, 12):
+                try:
+                    monitoring = sys.monitoring
+                    tool_id = monitoring.PROFILER_ID
+                    monitoring.use_tool_id(tool_id, "thinkingsdk")
+                    monitoring.register_callback(tool_id, monitoring.events.RAISE, self._on_raise)
+                    monitoring.set_events(tool_id, monitoring.events.RAISE)
+                    self._monitoring_tool_id = tool_id
+                except Exception as exc:
+                    # PROFILER_ID is a shared slot; another profiler may already hold it. Falling
+                    # back is correct, but it must NOT be silent: the fallback costs ~80% of a core,
+                    # and a user who never sees this line has no way to know why their app got slow.
+                    self._monitoring_tool_id = None
+                    logging.warning(
+                        "ThinkingSDK: sys.monitoring unavailable (%s); falling back to sys.settrace, "
+                        "which is significantly slower on hot code paths.", exc
+                    )
+            if self._monitoring_tool_id is None:
+                sys.settrace(self._trace_calls)
             threading.excepthook = self._thread_exception_handler
             sys.excepthook = self._main_thread_exception_handler
             
@@ -161,6 +190,26 @@ class RuntimeInstrumentation:
             # Fail silently to avoid breaking user code
             pass
             
+    def _on_raise(self, code, instruction_offset, exception) -> None:
+        """PEP 669 RAISE callback.
+
+        Delegates into the existing settrace path so filtering, sampling, the excepthook dedup
+        marker and enqueue behaviour are shared code rather than reimplemented, which keeps the two
+        instrumentation modes behaviourally identical.
+
+        sys.monitoring passes a code object rather than a frame, but the callback runs synchronously
+        on top of the raising frame, so sys._getframe(1) is the same frame sys.settrace would have
+        handed us.
+        """
+        try:
+            frame = sys._getframe(1)
+            self._trace_calls(
+                frame, "exception", (type(exception), exception, exception.__traceback__)
+            )
+        except Exception:
+            # A crash reporter must never worsen a crash.
+            pass
+
     def cleanup_hooks(self) -> None:
         """Clean up instrumentation hooks."""
         if not self._active:
@@ -168,7 +217,15 @@ class RuntimeInstrumentation:
             
         try:
             # Restore original hooks
-            sys.settrace(self._original_trace)
+            if getattr(self, "_monitoring_tool_id", None) is not None:
+                try:
+                    sys.monitoring.set_events(self._monitoring_tool_id, 0)
+                    sys.monitoring.free_tool_id(self._monitoring_tool_id)
+                except Exception:
+                    pass
+                self._monitoring_tool_id = None
+            else:
+                sys.settrace(self._original_trace)
             threading.excepthook = self._original_excepthook
             sys.excepthook = self._original_sys_excepthook
             
