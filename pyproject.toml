@@ -51,6 +51,11 @@ keyring = [
     "keyring>=24.0",
 ]
 
+[project.entry-points.pyinstaller40]
+# Lets PyInstaller discover the hooks in thinkingsdk/__pyinstaller automatically, so consumers do
+# not need --exclude-module for every optional integration. See issue #12.
+hook-dirs = "thinkingsdk.__pyinstaller:get_hook_dirs"
+
 [project.urls]
 Homepage = "https://github.com/srikarappal/thinkingsdk-python"
 Website = "https://thinkingsdk.ai"
