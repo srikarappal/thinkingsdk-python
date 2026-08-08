@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thinkingsdk"
-version = "0.1.0"
+version = "0.1.2"
 description = "AI crash debugging for Python in production"
 readme = "README.md"
 authors = [
@@ -31,6 +31,11 @@ requires-python = ">=3.7"
 dependencies = [
     "requests>=2.25.0",
     "pyyaml>=5.4",
+    # Imported unconditionally at module scope by enhanced_context and performance_monitor, both of
+    # which sit on the import path of `import thinkingsdk`. Undeclared, a clean install produced a
+    # package that could not be imported at all. Declared rather than guarded because process and
+    # memory sampling is core to what this SDK does, not an optional integration. See issue #14.
+    "psutil>=5.9",
     "contextvars>=2.4;python_version<'3.7'",
 ]
 
