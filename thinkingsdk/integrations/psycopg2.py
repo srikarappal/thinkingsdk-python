@@ -2,8 +2,15 @@
 Psycopg2 (PostgreSQL) integration for ThinkingSDK.
 
 Tracks raw PostgreSQL queries as breadcrumbs.
+
+Instrumentation goes through psycopg2's own connection_factory / cursor_factory extension points
+rather than assigning to attributes on the returned objects. That is not a style preference:
+psycopg2.extensions.connection and .cursor are C types with no instance __dict__, so
+``conn.cursor = ...`` and ``cursor.execute = ...`` raise AttributeError on every real connection.
+Both are subclassable, and subclassing is what psycopg2 documents for exactly this purpose.
 """
 
+import time
 from typing import Any
 from . import Integration
 
@@ -22,100 +29,84 @@ class Psycopg2Integration(Integration):
         """Hook into psycopg2 to track queries."""
         try:
             import psycopg2
-
-            # Store original connect
-            _orig_connect = psycopg2.connect
-
-            # We can't patch cursor directly (immutable C type)
-            # Instead, wrap the connection's cursor() method
-            def _thinking_connect(*args, **kwargs):
-                """Wrapped connect that returns instrumented connection."""
-                conn = _orig_connect(*args, **kwargs)
-
-                # Wrap the cursor method
-                _orig_cursor = conn.cursor
-
-                def _wrapped_cursor(*cursor_args, **cursor_kwargs):
-                    """Return an instrumented cursor."""
-                    cursor = _orig_cursor(*cursor_args, **cursor_kwargs)
-
-                    # Store original methods
-                    _orig_execute = cursor.execute
-                    _orig_executemany = cursor.executemany
-
-                    def _thinking_execute(query, vars=None):
-                        """Wrapped execute that tracks queries."""
-                        import time
-                        start_time = time.time()
-
-                        try:
-                            # Call original
-                            result = _orig_execute(query, vars)
-
-                            # Track as breadcrumb
-                            _add_query_breadcrumb(
-                                query=query,
-                                params=vars,
-                                duration=(time.time() - start_time) * 1000,
-                                connection=conn
-                            )
-
-                            return result
-
-                        except Exception as e:
-                            # Track error
-                            _add_query_breadcrumb(
-                                query=query,
-                                params=vars,
-                                duration=(time.time() - start_time) * 1000,
-                                connection=conn,
-                                error=str(e)
-                            )
-                            raise
-
-                    def _thinking_executemany(query, vars_list):
-                        """Wrapped executemany that tracks queries."""
-                        import time
-                        start_time = time.time()
-
-                        try:
-                            result = _orig_executemany(query, vars_list)
-
-                            _add_query_breadcrumb(
-                                query=query,
-                                params=f"[{len(vars_list)} sets]" if vars_list else None,
-                                duration=(time.time() - start_time) * 1000,
-                                connection=conn,
-                                executemany=True
-                            )
-
-                            return result
-
-                        except Exception as e:
-                            _add_query_breadcrumb(
-                                query=query,
-                                params=None,
-                                duration=(time.time() - start_time) * 1000,
-                                connection=conn,
-                                error=str(e),
-                                executemany=True
-                            )
-                            raise
-
-                    # Replace methods on this cursor instance
-                    cursor.execute = _thinking_execute
-                    cursor.executemany = _thinking_executemany
-
-                    return cursor
-
-                conn.cursor = _wrapped_cursor
-                return conn
-
-            # Replace psycopg2.connect
-            psycopg2.connect = _thinking_connect
-
+            from psycopg2.extensions import connection as _BaseConnection
+            from psycopg2.extensions import cursor as _BaseCursor
         except ImportError:
-            pass  # psycopg2 not installed
+            return  # psycopg2 not installed
+
+        # Idempotent: setup_once() can be reached more than once (a re-init, a test suite calling
+        # start() repeatedly). Without this the second pass wraps the wrapper and every query is
+        # recorded twice.
+        if getattr(psycopg2.connect, "_thinkingsdk_wrapped", False):
+            return
+
+        _orig_connect = psycopg2.connect
+
+        class ThinkingCursor(_BaseCursor):
+            """Records each statement as a breadcrumb, then gets out of the way."""
+
+            def execute(self, query, vars=None):
+                start_time = time.time()
+                try:
+                    result = super().execute(query, vars)
+                except Exception as exc:
+                    _add_query_breadcrumb(
+                        query=query,
+                        params=vars,
+                        duration=(time.time() - start_time) * 1000,
+                        connection=self.connection,
+                        error=str(exc),
+                    )
+                    raise
+                _add_query_breadcrumb(
+                    query=query,
+                    params=vars,
+                    duration=(time.time() - start_time) * 1000,
+                    connection=self.connection,
+                )
+                return result
+
+            def executemany(self, query, vars_list):
+                start_time = time.time()
+                try:
+                    result = super().executemany(query, vars_list)
+                except Exception as exc:
+                    _add_query_breadcrumb(
+                        query=query,
+                        params=None,
+                        duration=(time.time() - start_time) * 1000,
+                        connection=self.connection,
+                        error=str(exc),
+                        executemany=True,
+                    )
+                    raise
+                _add_query_breadcrumb(
+                    query=query,
+                    params=f"[{len(vars_list)} sets]" if vars_list else None,
+                    duration=(time.time() - start_time) * 1000,
+                    connection=self.connection,
+                    executemany=True,
+                )
+                return result
+
+        class ThinkingConnection(_BaseConnection):
+            """Hands out ThinkingCursor unless the caller asked for something else."""
+
+            def cursor(self, *args, **kwargs):
+                # A caller's own cursor_factory always wins, whether passed here or to connect().
+                # RealDictCursor and NamedTupleCursor change what rows look like, so silently
+                # replacing one would corrupt results rather than merely lose a breadcrumb.
+                if "cursor_factory" not in kwargs and getattr(self, "cursor_factory", None) is None:
+                    kwargs["cursor_factory"] = ThinkingCursor
+                return super().cursor(*args, **kwargs)
+
+        def _thinking_connect(*args, **kwargs):
+            """Return an instrumented connection, unless the caller supplied their own factory."""
+            kwargs.setdefault("connection_factory", ThinkingConnection)
+            return _orig_connect(*args, **kwargs)
+
+        _thinking_connect._thinkingsdk_wrapped = True
+        psycopg2.connect = _thinking_connect
 
 
 def _add_query_breadcrumb(query, params=None, duration=None, connection=None, error=None, executemany=False):
