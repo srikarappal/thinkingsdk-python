@@ -6,6 +6,8 @@ import traceback
 import time
 import os
 import re
+from itertools import islice
+from .safety import capture_suppressed, exception_message, safe_repr, safe_traceback
 from typing import Any, Dict, Optional, Set, Callable
 from pathlib import Path
 from .exception_chain import ExceptionChainProcessor
@@ -30,7 +32,7 @@ class RuntimeInstrumentation:
     # Default patterns for files/functions to ignore
     DEFAULT_IGNORE_PATTERNS = {
         # Only ignore ThinkingSDK internal paths to prevent recursion
-        re.compile(r'/thinkingsdk/'),
+        re.compile(r'(^|[/\\])thinkingsdk[/\\]'),
     }
     
     DEFAULT_IGNORE_FUNCTIONS = {
@@ -257,7 +259,7 @@ class RuntimeInstrumentation:
             'lib/python' not in filename and
             filename.endswith('.py') and
             # Exclude ThinkingSDK itself to prevent recursion
-            '/thinkingsdk/' not in filename
+            'thinkingsdk/' not in filename.replace('\\', '/')
         )
     
     def _is_user_relevant_exception(self, frame, exc_info) -> bool:
@@ -305,27 +307,13 @@ class RuntimeInstrumentation:
         
     def _safe_repr(self, value: Any, max_length: int = None) -> str:
         """Safely convert a value to string representation."""
-        max_length = max_length or self.max_local_length
-        
-        try:
-            # Handle common problematic types
-            if hasattr(value, '__dict__') and len(value.__dict__) > 10:
-                return f"<{type(value).__name__} object>"
-            
-            repr_str = repr(value)
-            
-            # Truncate if too long
-            if len(repr_str) > max_length:
-                return repr_str[:max_length-3] + '...'
-            return repr_str
-        except Exception:
-            return f"<{type(value).__name__} (repr failed)>"
-            
+        return safe_repr(value, max_length or self.max_local_length)
+
     def _capture_locals(self, frame) -> Dict[str, str]:
         """Safely capture local variables from a frame."""
         try:
             locals_dict = {}
-            items = list(frame.f_locals.items())[:self.max_locals]
+            items = islice(frame.f_locals.items(), self.max_locals)
             
             for key, value in items:
                 # Skip private/internal variables
@@ -340,7 +328,7 @@ class RuntimeInstrumentation:
         """Main trace callback for sys.settrace."""
         try:
             # Quick shutdown detection - Python is shutting down
-            if not self._active or sys.meta_path is None:
+            if capture_suppressed() or not self._active or sys.meta_path is None:
                 return None
 
             if event not in ("call", "return", "exception"):
@@ -361,7 +349,7 @@ class RuntimeInstrumentation:
                     return self._trace_calls
                 
                 # Mark this exception as captured by sys.settrace to prevent duplicate from sys.excepthook
-                self._last_captured_exception = (exc_type, str(exc_value), time.time())
+                self._last_captured_exception = (exc_type, exception_message(exc_value), time.time())
                 
                 # Silently capture - no debug output to maintain transparency
                 pass
@@ -488,13 +476,13 @@ class RuntimeInstrumentation:
         # Check local variables for business entities
         try:
             locals_dict = frame.f_locals
-            for var_name, var_value in locals_dict.items():
+            for var_name, var_value in islice(locals_dict.items(), 50):
                 var_name_lower = var_name.lower()
                 if any(keyword in var_name_lower for keyword in high_impact_keywords):
                     return 'high'
                 
                 # Check if variable contains business-critical data
-                var_str = str(var_value).lower()
+                var_str = self._safe_repr(var_value).lower()
                 if any(keyword in var_str for keyword in ['user_id', 'customer_id', 'order_id', 'payment_id']):
                     return 'high'
         except:
@@ -586,12 +574,12 @@ class RuntimeInstrumentation:
     def _main_thread_exception_handler(self, exc_type, exc_value, exc_traceback) -> None:
         """Handle exceptions in main thread."""
         try:
-            if self._active:
+            if self._active and not capture_suppressed():
                 # Check if this exception was already captured by sys.settrace (preferred)
                 if self._last_captured_exception:
                     last_type, last_message, last_time = self._last_captured_exception
                     if (exc_type == last_type and 
-                        str(exc_value) == last_message and 
+                        exception_message(exc_value) == last_message and
                         time.time() - last_time < 1.0):  # Within 1 second
                         # Skip duplicate - sys.settrace already captured this exception
                         # But still need to call original handler for normal Python display
@@ -646,8 +634,8 @@ class RuntimeInstrumentation:
             "event": "exception",
             "exception": {
                 "type": exc_type.__name__,
-                "message": str(exc_value),
-                "traceback": traceback.format_exception(exc_type, exc_value, exc_traceback),
+                "message": exception_message(exc_value),
+                "traceback": safe_traceback(exc_type, exc_value, exc_traceback),
                 "structured_traceback": [
                     {
                         "file": tb.filename,
@@ -655,7 +643,7 @@ class RuntimeInstrumentation:
                         "name": tb.name,
                         "text": tb.line
                     }
-                    for tb in traceback.extract_tb(exc_traceback)
+                    for tb in traceback.extract_tb(exc_traceback, limit=32)
                 ],
                 "exception_chain": exception_chain  # Include full chain
             },
@@ -707,7 +695,7 @@ class RuntimeInstrumentation:
     def _thread_exception_handler(self, args) -> None:
         """Handle exceptions in threads."""
         try:
-            if not self._active:
+            if not self._active or capture_suppressed():
                 # Not active, but still call original handler
                 if self._original_excepthook:
                     self._original_excepthook(args)
@@ -721,7 +709,7 @@ class RuntimeInstrumentation:
                 "exception": {
                     "type": args.exc_type.__name__,
                     "msg": self._safe_repr(args.exc_value, 500),
-                    "traceback": traceback.format_exception(
+                    "traceback": safe_traceback(
                         args.exc_type, args.exc_value, args.exc_traceback
                     )[-5:]  # Last 5 frames only
                 },
@@ -747,10 +735,10 @@ class RuntimeInstrumentation:
         exception_chain = ExceptionChainProcessor.extract_exception_chain(exc_info)
         
         # Get full traceback for AI analysis (for the main exception)
-        full_traceback = traceback.format_exception(exc_type, exc_val, exc_tb)
+        full_traceback = safe_traceback(exc_type, exc_val, exc_tb)
         
         # Extract structured stack trace with full file paths and variable context
-        tb_list = traceback.extract_tb(exc_tb)
+        tb_list = traceback.extract_tb(exc_tb, limit=32)
         structured_traceback = []
         
         # Walk the traceback to capture variables at each frame
@@ -816,7 +804,7 @@ class RuntimeInstrumentation:
         exception_data = {
             "exception": {
                 "type": exc_type.__name__,
-                "message": str(exc_val),  # Use 'message' instead of 'msg' for consistency
+                "message": exception_message(exc_val),  # Use 'message' instead of 'msg' for consistency
                 "traceback": full_traceback,  # Full traceback for analysis
                 "traceback_summary": full_traceback[-5:],  # Last 5 for display
                 "structured_traceback": structured_traceback,  # Structured for processing
@@ -866,7 +854,7 @@ class RuntimeInstrumentation:
         
         # Add client-side severity and business impact assessment
         exception_data.update(self._assess_exception_severity_and_impact(
-            exc_type.__name__, str(exc_val), frame
+            exc_type.__name__, exception_message(exc_val), frame
         ))
         
         # Add call stack context if available
@@ -1107,7 +1095,7 @@ class RuntimeInstrumentation:
                         captured[key] = {
                             'value': self._safe_repr(value, max_length=1000),  # Longer for debugging
                             'type': type(value).__name__,
-                            'repr': repr(value)[:500] if hasattr(value, '__repr__') else str(type(value))
+                            'repr': self._safe_repr(value, 500)
                         }
                     except Exception:
                         captured[key] = {

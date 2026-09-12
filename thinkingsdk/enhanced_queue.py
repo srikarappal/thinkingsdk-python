@@ -2,6 +2,8 @@
 Enhanced event queue that integrates deduplication and PII scrubbing.
 """
 
+from .safety import capture_suppressed, bounded_value
+
 from typing import Dict, Any, List, Optional
 
 
@@ -29,6 +31,10 @@ class EnhancedEventQueue:
         2. Deduplication
         3. Queue
         """
+        if capture_suppressed():
+            return False
+        event = bounded_value(event, max_length=8192, budget=[8192])
+
         # Scrub PII first
         if self.pii_scrubber:
             event = self.pii_scrubber.scrub_event(event)
@@ -59,7 +65,7 @@ class EnhancedEventQueue:
         
         # Get deduplicated patterns if we have room
         if self.deduplicator and len(batch) < max_items:
-            dedup_events = self.deduplicator.flush_ready()
+            dedup_events = self.deduplicator.flush_ready(max_items=max_items - len(batch))
             if dedup_events:
                 # Add as many deduplicated events as we can
                 remaining = max_items - len(batch)

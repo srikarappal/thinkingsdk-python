@@ -5,6 +5,7 @@ Adapted from sentry-sdk's logging integration to capture log messages as breadcr
 """
 
 import logging
+from ..safety import capture_suppressed
 import sys
 from datetime import datetime, timezone
 from fnmatch import fnmatch
@@ -137,6 +138,8 @@ class BreadcrumbHandler(_BaseHandler):
 
     def emit(self, record):
         """Emit a log record as a breadcrumb."""
+        if capture_suppressed():
+            return
         try:
             self.format(record)
             return self._emit(record)
