@@ -13,6 +13,8 @@ class Config:
         # Event Queue settings
         'queue': {
             'maxsize': 10000,
+            'max_bytes': 8 * 1024 * 1024,
+            'max_event_bytes': 256 * 1024,
             'drop_strategy': 'oldest',  # 'oldest' or 'newest'
         },
         

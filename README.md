@@ -126,3 +126,50 @@ The analysis service (the AI engine and dashboard) runs as a separate component.
 ## License
 
 MIT
+
+## Resource safety (0.1.4)
+
+The SDK suppresses capture throughout its own background upload context, including HTTP
+and TLS dependencies. Application exceptions continue to be captured. Diagnostic values
+are bounded before formatting; custom object `repr` and `str` methods are not invoked.
+Exception messages, nested values, traceback frames and exception chains are truncated
+when they exceed capture limits.
+
+Default buffering limits are 8 MiB of serialized queued reports, 256 KiB per report,
+2 MiB of retained duplicate samples and 64 KiB per duplicate sample. A batch has a
+1 MiB payload budget. These are payload limits, not a promise that total process memory
+stays below their sum. Oversized reports and overflow entries are dropped, with queue
+and deduplicator statistics exposing drops. Inputs are detached so caller mutation
+cannot enlarge retained payloads.
+
+The first occurrence of a crash is queued immediately. Repeats with the same exception
+type and stack location are aggregated over a fixed 15 minute window into one bounded
+sample and a count. Timestamps and changing locals do not create retained variations.
+The existing `deduplicated_pattern` envelope carries the repeat count in `data.frequency`;
+it excludes the first event already sent. Backend consumers must add that frequency,
+not count the envelope as one occurrence. This release does not change backend counting
+or provide server idempotency for retried HTTP requests.
+
+Failed uploads use the existing finite HTTP retries and circuit breaker plus an
+interruptible exponential delay between batches, capped at 60 seconds. Delivery remains
+best effort: exhausted retries, process exit and buffer pressure can lose reports.
+These changes do not add persistent disk storage.
+
+```python
+thinkingsdk.start(
+    api_key="YOUR_API_KEY",
+    config={
+        "queue": {
+            "max_bytes": 8 * 1024 * 1024,
+            "max_event_bytes": 256 * 1024,
+        },
+        "deduplication": {
+            "window_size_ms": 900000,
+            "flush_interval_ms": 900000,
+            "max_bytes": 2 * 1024 * 1024,
+            "max_sample_bytes": 64 * 1024,
+        },
+        "sender": {"max_batch_bytes": 1024 * 1024},
+    },
+)
+```

@@ -40,6 +40,8 @@ This tells AI: "Config loading failed BECAUSE of invalid JSON syntax"
 
 import sys
 import traceback
+from itertools import islice
+from .safety import exception_message, safe_repr, safe_traceback
 from typing import List, Tuple, Optional, Dict, Any, Set
 
 
@@ -63,7 +65,7 @@ class ExceptionChainProcessor:
         exc_type, exc_value, exc_tb = exc_info
         
         # Walk through the exception chain
-        while exc_value is not None:
+        while exc_value is not None and len(chain) < 8:
             # Create unique ID for this exception to detect cycles
             exc_id = id(exc_value)
             
@@ -133,7 +135,7 @@ class ExceptionChainProcessor:
         
         # Get exception message
         try:
-            message = str(exc_value)
+            message = exception_message(exc_value)
         except:
             message = '<unprintable exception>'
         
@@ -142,10 +144,10 @@ class ExceptionChainProcessor:
         structured_tb = []
         
         if exc_tb:
-            tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
+            tb_lines = safe_traceback(exc_type, exc_value, exc_tb)
             
             # Extract structured traceback for better analysis
-            for frame_summary in traceback.extract_tb(exc_tb):
+            for frame_summary in traceback.extract_tb(exc_tb, limit=32):
                 structured_tb.append({
                     'file': frame_summary.filename,
                     'line': frame_summary.lineno,
@@ -164,11 +166,11 @@ class ExceptionChainProcessor:
         # Add any custom attributes from the exception
         if hasattr(exc_value, '__dict__'):
             custom_attrs = {}
-            for key, value in exc_value.__dict__.items():
+            for key, value in islice(exc_value.__dict__.items(), 50):
                 if not key.startswith('_'):
                     try:
                         # Only include serializable attributes
-                        custom_attrs[key] = str(value)
+                        custom_attrs[key] = safe_repr(value)
                     except:
                         pass
             

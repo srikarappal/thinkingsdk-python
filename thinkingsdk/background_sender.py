@@ -4,6 +4,7 @@ import time
 import logging
 import threading
 import gzip
+from .safety import SuppressCapture, encode_event, OversizedEvent
 from typing import Dict, List, Any, Optional
 from urllib.parse import urljoin
 import requests
@@ -41,6 +42,8 @@ class BackgroundSender:
         
         # Configuration
         self.batch_size = self._config.get('batch_size', 50)
+        self.max_batch_bytes = self._config.get('max_batch_bytes', 1024 * 1024)
+        self._pending_event = None
         self.max_batch_wait = self._config.get('max_batch_wait', 2.0)
         self.retry_attempts = self._config.get('retry_attempts', 3)
         self.backoff_factor = self._config.get('backoff_factor', 1.0)
@@ -163,7 +166,7 @@ class BackgroundSender:
                 
             try:
                 # Debug: Log what we're sending
-                logging.debug(f"ThinkingSDK: Creating session with API key: {self.api_key[:20] if self.api_key else 'None'}...")
+                logging.debug("ThinkingSDK: Creating session")
                 logging.debug(f"ThinkingSDK: Server URL: {self.server_url}")
                 
                 # Create new session
@@ -201,6 +204,10 @@ class BackgroundSender:
                 return False
         
     def _send_batch(self, session: requests.Session, events: List[Dict[str, Any]]) -> bool:
+        with SuppressCapture():
+            return self._send_batch_suppressed(session, events)
+
+    def _send_batch_suppressed(self, session, events):
         """Send a batch of events to the server.
         
         Args:
@@ -224,7 +231,7 @@ class BackgroundSender:
             url = urljoin(self.server_url + "/", "ingest")
             
             # Prepare batch payload
-            batch_data = json.dumps({"events": events})
+            batch_data = json.dumps({"events": events}, separators=(",", ":"))
             
             # Compress if large
             headers = {}
@@ -319,6 +326,7 @@ class BackgroundSender:
             List of events (may be empty)
         """
         batch = []
+        batch_bytes = len(b'{"events":[]}')
         batch_start_time = time.time()
         
         while len(batch) < self.batch_size:
@@ -327,10 +335,24 @@ class BackgroundSender:
                 break
                 
             # Try to get more events
-            events = self.queue.pop_batch(min(50, self.batch_size - len(batch)))
+            if self._pending_event is not None:
+                events = [self._pending_event]
+                self._pending_event = None
+            else:
+                events = self.queue.pop_batch(1)
             if events:
+                try:
+                    encoded = encode_event(events[0], max_bytes=self.max_batch_bytes)
+                    event_bytes = len(encoded) + 1
+                    events = [json.loads(encoded)]
+                except OversizedEvent:
+                    self._total_failed += 1
+                    continue
+                if batch_bytes + event_bytes > self.max_batch_bytes:
+                    self._pending_event = events[0]
+                    break
                 batch.extend(events)
-                batch_start_time = time.time()  # Reset timer when we get events
+                batch_bytes += event_bytes
             else:
                 # No events available, short sleep
                 time.sleep(0.01)
@@ -342,12 +364,17 @@ class BackgroundSender:
         return batch
         
     def _run(self) -> None:
+        with SuppressCapture():
+            self._run_suppressed()
+
+    def _run_suppressed(self):
         """Main loop running in the background thread."""
         # Set up logging for thread
         logging.basicConfig(level=logging.WARNING)
         
         session = self._setup_session()
         
+        failure_streak = 0
         while not self._stop_event.is_set():
             try:
                 # Collect batch of events
@@ -355,25 +382,30 @@ class BackgroundSender:
                 
                 if batch:
                     success = self._send_batch(session, batch)
-                    if not success and self._is_circuit_open():
-                        # Circuit is open, wait longer before retrying
-                        time.sleep(min(30, self.circuit_breaker_timeout / 2))
+                    if success:
+                        failure_streak = 0
+                    else:
+                        failure_streak = min(failure_streak + 1, 10)
+                        delay = min(60.0, max(1.0, self.backoff_factor) * (2 ** failure_streak))
+                        self._stop_event.wait(delay)
                 else:
                     # No events, short sleep
-                    time.sleep(0.1)
+                    self._stop_event.wait(0.1)
                     
             except Exception as e:
                 # Should never happen, but catch any unexpected errors
                 logging.error(f"ThinkingSDK: Unexpected error in sender loop: {e}")
-                time.sleep(1.0)
+                self._stop_event.wait(1.0)
                 
         # Drain remaining events on shutdown
         try:
-            final_batch = self.queue.pop_batch(1000)  # Get up to 1000 remaining events
+            final_batch = self._collect_batch()
             if final_batch:
                 self._send_batch(session, final_batch)
         except Exception:
             pass
+        finally:
+            session.close()
             
     def get_stats(self) -> Dict[str, Any]:
         """Get sender statistics."""
