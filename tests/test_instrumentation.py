@@ -56,10 +56,17 @@ class TestRuntimeInstrumentation(unittest.TestCase):
         self.assertIn('test_func', instr.ignore_functions)
 
     def test_hook_setup_and_cleanup(self):
-        """Test setting up and cleaning up hooks."""
+        """Test setting up and cleaning up hooks.
+
+        Tracing caught exceptions is opt-in since issue #20, and this test is about the install and
+        teardown mechanics of that tracer, so it asks for it explicitly."""
         original_trace = sys.gettrace()
         original_excepthook = threading.excepthook
-        
+
+        self.instrumentation = RuntimeInstrumentation(
+            self.queue, {'capture_caught_exceptions': True}
+        )
+
         # Setup hooks
         self.instrumentation.setup_hooks()
         self.assertTrue(self.instrumentation._active)

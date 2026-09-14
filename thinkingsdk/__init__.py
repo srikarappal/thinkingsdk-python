@@ -155,9 +155,11 @@ def start(
         stdlib_integration.setup_once()
         _integrations.append(stdlib_integration)
 
-        # Add logging integration
+        # Add logging integration. Use the class's own INFO default rather than forcing DEBUG:
+        # every DEBUG record in the process became a breadcrumb, which measured 5.4x on logging
+        # calls (issue #20). Callers who want DEBUG breadcrumbs can raise it in config.
         from .integrations.logging import LoggingIntegration
-        logging_integration = LoggingIntegration(level=logging.DEBUG)
+        logging_integration = LoggingIntegration()
         logging_integration.setup_once()
         _integrations.append(logging_integration)
 

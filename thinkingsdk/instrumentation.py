@@ -92,6 +92,7 @@ class RuntimeInstrumentation:
         
         # Enhanced tracking configuration
         self.capture_performance = self._config.get('capture_performance', True)
+        self.capture_caught_exceptions = self._config.get('capture_caught_exceptions', False)
         self.capture_memory = self._config.get('capture_memory', False)
         self.capture_call_patterns = self._config.get('capture_call_patterns', True)
         self.capture_data_flow = self._config.get('capture_data_flow', False)
@@ -156,16 +157,21 @@ class RuntimeInstrumentation:
             
             # Install new hooks.
             #
-            # PEP 669 (Python 3.12+): subscribe to RAISE only. sys.settrace fires on EVERY function
-            # call, line and return in the thread, and this callback allocates per event, which
-            # measured 467x on a tight loop and ~80% of a CPU core sustained on a real workload
-            # (see issue #10). sys.monitoring charges nothing for events we do not subscribe to, and
-            # the default config is exceptions_only anyway, so RAISE is all we need.
+            # The excepthooks below are the crash path and are always installed. Tracing every
+            # `raise` is a SEPARATE, opt-in feature, because a raise is not a crash: `any()`
+            # short-circuiting raises GeneratorExit, SQLAlchemy's type cache raises KeyError on
+            # every miss, iterators end with StopIteration. Subscribing to all of it measured
+            # 2703x on caught exceptions and cost one real FastAPI request 5.2s for zero errors
+            # (issue #20), so it is off unless the user asks for it.
             #
-            # It also fixes a coverage gap: sys.settrace only instruments the thread that called
-            # start(), while sys.monitoring applies process-wide.
+            # When it IS on, PEP 669 (Python 3.12+) subscribes to RAISE only. sys.settrace fires on
+            # every function call, line and return in the thread and allocates per event, which
+            # measured 467x on a tight loop and ~80% of a CPU core sustained (issue #10).
+            # sys.monitoring charges nothing for events we do not subscribe to, and it fixes a
+            # coverage gap: settrace only instruments the calling thread, sys.monitoring applies
+            # process-wide.
             self._monitoring_tool_id = None
-            if sys.version_info >= (3, 12):
+            if self.capture_caught_exceptions and sys.version_info >= (3, 12):
                 try:
                     monitoring = sys.monitoring
                     tool_id = monitoring.PROFILER_ID
@@ -182,7 +188,7 @@ class RuntimeInstrumentation:
                         "ThinkingSDK: sys.monitoring unavailable (%s); falling back to sys.settrace, "
                         "which is significantly slower on hot code paths.", exc
                     )
-            if self._monitoring_tool_id is None:
+            if self.capture_caught_exceptions and self._monitoring_tool_id is None:
                 sys.settrace(self._trace_calls)
             threading.excepthook = self._thread_exception_handler
             sys.excepthook = self._main_thread_exception_handler
@@ -226,7 +232,7 @@ class RuntimeInstrumentation:
                 except Exception:
                     pass
                 self._monitoring_tool_id = None
-            else:
+            elif self.capture_caught_exceptions:
                 sys.settrace(self._original_trace)
             threading.excepthook = self._original_excepthook
             sys.excepthook = self._original_sys_excepthook

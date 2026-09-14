@@ -112,6 +112,26 @@ thinking.start(
 )
 ```
 
+### Caught exceptions (off by default)
+
+The SDK reports crashes: unhandled exceptions, caught through `sys.excepthook`,
+`threading.excepthook` and the framework error handlers. Exceptions your code catches and
+handles are not reported, because a `raise` is not a failure. `any()` short-circuiting closes a
+generator and raises `GeneratorExit`, SQLAlchemy's type cache uses `try/except KeyError` as its
+miss path, every iterator ends with `StopIteration`. One real FastAPI request raised 981
+exceptions with nothing wrong.
+
+If you do want caught-exception telemetry, turn it on and measure it on your own workload
+first. It is expensive by nature: every `raise` in the process pays a frame walk.
+
+```python
+thinking.start(api_key="sk_live_...", config={"capture_caught_exceptions": True})
+```
+
+```bash
+export THINKINGSDK_CAPTURE_CAUGHT_EXCEPTIONS=true
+```
+
 ### Environment variables
 
 ```bash
@@ -126,6 +146,20 @@ The analysis service (the AI engine and dashboard) runs as a separate component.
 ## License
 
 MIT
+
+## Caught exceptions are opt-in (0.1.5)
+
+`sys.monitoring.events.RAISE` fires on every `raise`, not only on failures, so subscribing to it
+instrumented ordinary control flow: generator short-circuits, cache misses, iterator exhaustion.
+Measured at 2703x on caught exceptions, and 5.2s of server time on a single FastAPI request that
+raised 981 times with zero errors.
+
+The tracer is now off unless `capture_caught_exceptions` is set. Crash reporting is unchanged: the
+excepthooks are the crash path and are always installed, so unhandled exceptions arrive with their
+traceback, locals, breadcrumbs and repository context as before.
+
+`LoggingIntegration` also no longer forces `DEBUG`. It uses its own `INFO` default, so a debug-chatty
+application does not turn every record into a breadcrumb.
 
 ## Resource safety (0.1.4)
 

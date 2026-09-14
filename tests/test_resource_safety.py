@@ -104,7 +104,11 @@ def test_suppression_is_nested_and_context_local():
 @pytest.mark.skipif(sys.version_info < (3, 12), reason='Requires PEP 669')
 def test_failed_sdk_uploads_do_not_capture_but_application_failures_do():
     queue = EventQueue()
-    instrumentation = RuntimeInstrumentation(queue, {'capture_memory': False})
+    # capture_caught_exceptions: the application failure below is caught, and tracing caught
+    # exceptions is opt-in since issue #20. This test is about suppression, not about the default.
+    instrumentation = RuntimeInstrumentation(
+        queue, {'capture_memory': False, 'capture_caught_exceptions': True}
+    )
     sender = BackgroundSender(queue, 'test', 'https://example.invalid')
     sender._ensure_session = Mock(return_value=False)
     instrumentation.setup_hooks()
