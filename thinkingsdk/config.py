@@ -27,6 +27,17 @@ class Config:
             'ignore_patterns': [],
             'ignore_functions': [],
             'exceptions_only': True,  # MVP: Only capture exception events
+            # Whether to trace exceptions that user code catches and handles.
+            #
+            # Off by default. A `raise` is not a crash: `any()` short-circuiting closes a generator
+            # (GeneratorExit), SQLAlchemy's type cache uses try/except KeyError as its miss path,
+            # every iterator ends with StopIteration. Tracing all of that charged one real FastAPI
+            # request 981 frame walks for zero errors (issue #20). Crashes do not need this: they
+            # arrive through the excepthooks, which are always installed.
+            #
+            # Turn it on only if you want caught-exception telemetry and have measured the cost on
+            # your own workload.
+            'capture_caught_exceptions': False,
         },
         
         # Strategic sampling settings for AI-agentic debugging
@@ -85,6 +96,7 @@ class Config:
         # Allow overriding key settings via environment variables
         env_mappings = {
             'THINKINGSDK_SAMPLE_RATE': ('instrumentation', 'sample_rate', float),
+            'THINKINGSDK_CAPTURE_CAUGHT_EXCEPTIONS': ('instrumentation', 'capture_caught_exceptions', bool),
             'THINKINGSDK_BATCH_SIZE': ('sender', 'batch_size', int),
             'THINKINGSDK_QUEUE_SIZE': ('queue', 'maxsize', int),
             'THINKINGSDK_ENABLE_LOGGING': ('enable_logging', None, bool),
