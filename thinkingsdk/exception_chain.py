@@ -41,7 +41,7 @@ This tells AI: "Config loading failed BECAUSE of invalid JSON syntax"
 import sys
 import traceback
 from itertools import islice
-from .safety import exception_message, safe_repr, safe_traceback
+from .safety import MAX_TRACEBACK_FRAMES, exception_message, safe_repr, safe_traceback
 from typing import List, Tuple, Optional, Dict, Any, Set
 
 
@@ -147,7 +147,7 @@ class ExceptionChainProcessor:
             tb_lines = safe_traceback(exc_type, exc_value, exc_tb)
             
             # Extract structured traceback for better analysis
-            for frame_summary in traceback.extract_tb(exc_tb, limit=32):
+            for frame_summary in traceback.extract_tb(exc_tb, limit=-MAX_TRACEBACK_FRAMES):
                 structured_tb.append({
                     'file': frame_summary.filename,
                     'line': frame_summary.lineno,

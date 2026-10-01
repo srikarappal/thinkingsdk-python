@@ -7,7 +7,8 @@ import time
 import os
 import re
 from itertools import islice
-from .safety import capture_suppressed, exception_message, safe_repr, safe_traceback
+from .safety import MAX_TRACEBACK_FRAMES, capture_suppressed, exception_message, safe_repr, safe_traceback
+from .git_info import read_git_head
 from typing import Any, Dict, Optional, Set, Callable
 from pathlib import Path
 from .exception_chain import ExceptionChainProcessor
@@ -20,6 +21,25 @@ except ImportError:
     # Fallback if strategic sampling not available
     StrategicSampler = None
     RemoteConfigManager = None
+
+# Path fragments of library and interpreter code; any other frame is application code
+NON_APP_PATH_MARKERS = (
+    '/site-packages/', '/dist-packages/', '/lib/python', '/.venv/', '/venv/', '<frozen',
+    '<built-in', '<string>', '/opt/anaconda', '/opt/homebrew', '/usr/local/', '/usr/lib/',
+)
+
+
+def is_in_app_path(file_path: str) -> bool:
+    """True when a frame's file is application code rather than a library or the interpreter."""
+    return not any(marker in file_path for marker in NON_APP_PATH_MARKERS)
+
+
+def traceback_depth(exc_traceback) -> int:
+    depth = 0
+    while exc_traceback is not None:
+        depth += 1
+        exc_traceback = exc_traceback.tb_next
+    return depth
 
 
 class RuntimeInstrumentation:
@@ -63,6 +83,7 @@ class RuntimeInstrumentation:
         """
         self.queue = queue
         self._config = config or {}
+        self._git_head = None  # (branch, commit) read lazily from .git on the first exception
         self.api_client = api_client
         
         # Basic configuration settings
@@ -561,11 +582,14 @@ class RuntimeInstrumentation:
                 if repo_full_name.endswith('.git'):
                     repo_full_name = repo_full_name[:-4]
             
+            if self._git_head is None:
+                self._git_head = read_git_head(os.getcwd())
+            branch, commit_hash = self._git_head
             event_data["repository_context"] = {
                 "git_repositories": git_repositories,  # Keep for backward compatibility
                 "repo_full_name": repo_full_name,
-                "branch": "main",  # Default branch, could be made configurable
-                "commit_hash": None,  # Would need git integration to get actual commit
+                "branch": branch or "main",  # detached HEAD or no checkout (containers): assume main
+                "commit_hash": commit_hash,
                 "auto_fix_enabled": True
             }
         else:
@@ -644,12 +668,14 @@ class RuntimeInstrumentation:
                 "traceback": safe_traceback(exc_type, exc_value, exc_traceback),
                 "structured_traceback": [
                     {
-                        "file": tb.filename,
-                        "line": tb.lineno,
-                        "name": tb.name,
-                        "text": tb.line
+                        "file": frame.filename,
+                        "file_path": frame.filename,
+                        "line": frame.lineno,
+                        "func": frame.name,
+                        "code": frame.line,
+                        "in_app": is_in_app_path(frame.filename)
                     }
-                    for tb in traceback.extract_tb(exc_traceback, limit=32)
+                    for frame in traceback.extract_tb(exc_traceback, limit=-MAX_TRACEBACK_FRAMES)
                 ],
                 "exception_chain": exception_chain  # Include full chain
             },
@@ -744,11 +770,13 @@ class RuntimeInstrumentation:
         full_traceback = safe_traceback(exc_type, exc_val, exc_tb)
         
         # Extract structured stack trace with full file paths and variable context
-        tb_list = traceback.extract_tb(exc_tb, limit=32)
+        tb_list = traceback.extract_tb(exc_tb, limit=-MAX_TRACEBACK_FRAMES)
         structured_traceback = []
         
-        # Walk the traceback to capture variables at each frame
+        # Walk the traceback to capture variables at each frame, starting at the first kept frame
         current_tb = exc_tb
+        for _ in range(traceback_depth(exc_tb) - len(tb_list)):
+            current_tb = current_tb.tb_next
         tb_index = 0
         prev_frame_sig = None  # For detecting recursive frames
         
@@ -761,21 +789,7 @@ class RuntimeInstrumentation:
             frame_globals = self._capture_all_frame_variables(frame_obj.f_globals, 'globals')
             
             # Determine if this frame is in-app code
-            file_path = tb_frame_info.filename
-            is_in_app = not any(pattern in file_path for pattern in [
-                '/site-packages/',
-                '/dist-packages/',
-                '/lib/python',
-                '/.venv/',
-                '/venv/',
-                '<frozen',
-                '<built-in',
-                '<string>',
-                '/opt/anaconda',
-                '/opt/homebrew',
-                '/usr/local/',
-                '/usr/lib/'
-            ])
+            is_in_app = is_in_app_path(tb_frame_info.filename)
             
             # Create frame signature for recursion detection
             frame_sig = f"{tb_frame_info.filename}:{tb_frame_info.name}"
