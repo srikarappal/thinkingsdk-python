@@ -1,7 +1,7 @@
 """Version information for ThinkingSDK client."""
 
-__version__ = "0.1.5"
-__version_info__ = (0, 1, 4)
+__version__ = "0.1.6"
+__version_info__ = (0, 1, 6)
 
 def get_version():
     """Return the version string."""

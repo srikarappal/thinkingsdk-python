@@ -8,6 +8,13 @@ import traceback
 
 _capture_suppressed = contextvars.ContextVar('thinkingsdk_capture_suppressed', default=False)
 
+# Tracebacks keep the innermost frames: the raise site matters most on deep stacks
+MAX_TRACEBACK_FRAMES = 32
+
+# Small keys the server groups and routes on. They are encoded first so that a large
+# event exhausting the node budget truncates breadcrumbs and context, never these.
+ROUTING_KEYS = ('event', 'type', 'ts', 'repository_context', 'func', 'file', 'line', 'exception')
+
 
 class SuppressCapture:
     """Suppress capture in this execution context, including dependency calls."""
@@ -72,7 +79,7 @@ def exception_message(exception, max_length=1000):
 
 
 def safe_traceback(exc_type, exception, exc_traceback):
-    frames = traceback.extract_tb(exc_traceback, limit=32)
+    frames = traceback.extract_tb(exc_traceback, limit=-MAX_TRACEBACK_FRAMES)
     lines = [f'  File {frame.filename[:1000]}, line {frame.lineno}, in {frame.name[:200]}\n'
              for frame in frames]
     lines.append(f'{exc_type.__name__}: {exception_message(exception)}\n')
@@ -83,9 +90,18 @@ class OversizedEvent(ValueError):
     """A report exceeds the serialization budget."""
 
 
+def prioritize_routing_keys(event):
+    """Copy of a top level event with ROUTING_KEYS first (dicts keep insertion order)."""
+    if type(event) is not dict:
+        return event
+    ordered = {key: event[key] for key in ROUTING_KEYS if key in event}
+    ordered.update((key, value) for key, value in event.items() if key not in ordered)
+    return ordered
+
+
 def encode_event(event, max_bytes=256 * 1024):
     """Stop encoding when the byte budget is reached; never format arbitrary objects."""
-    bounded = bounded_value(event, max_length=8192, budget=[1024])
+    bounded = bounded_value(prioritize_routing_keys(event), max_length=8192, budget=[1024])
     chunks = []
     total_bytes = 0
     encoder = json.JSONEncoder(separators=(',', ':'), ensure_ascii=True)

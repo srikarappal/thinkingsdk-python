@@ -147,6 +147,29 @@ The analysis service (the AI engine and dashboard) runs as a separate component.
 
 MIT
 
+## Crash reports keep what the server groups on (0.1.6)
+
+The server groups a crash by its type, message and innermost application frame, and picks
+how to fix it from `repository_context`. Three gaps made that unreliable:
+
+1. A large report (deep stack, many breadcrumbs) used up the encoding budget before
+   `repository_context`, which then arrived as the string `"<truncated>"`. Routing keys
+   (`event`, `ts`, `repository_context`, `func`, `file`, `line`, `exception`) are now encoded
+   first, so breadcrumbs and context are truncated instead.
+2. Frames captured by `sys.excepthook` used `name`/`text`; they now use the same schema as the
+   full capture path: `file`, `file_path`, `line`, `func`, `code`, `in_app`.
+3. Tracebacks kept the outermost 32 frames, dropping the raise site on deep stacks. They now
+   keep the innermost 32.
+
+`repository_context` also reports the real branch and commit of the running checkout, read
+from `.git` without invoking git. Outside a checkout (most containers) the branch falls back
+to `main` and the commit is `null`, as before.
+
+The PII scrubber's AWS secret pattern matched any run of 40 key characters, so it redacted
+git SHAs and the middle of long file paths (`/home/app/src/services/payment/process.py`
+arrived as `[REDACTED]ent/process.py`). It now matches only a standalone 40 character key
+that mixes upper case, lower case and digits.
+
 ## Caught exceptions are opt-in (0.1.5)
 
 `sys.monitoring.events.RAISE` fires on every `raise`, not only on failures, so subscribing to it
