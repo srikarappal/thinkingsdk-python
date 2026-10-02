@@ -36,7 +36,13 @@ class PIIScrubber:
         'ipv6': re.compile(r'(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}'),
         'jwt': re.compile(r'eyJ[A-Za-z0-9-_]+\.eyJ[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+'),
         'aws_key': re.compile(r'AKIA[0-9A-Z]{16}'),
-        'aws_secret': re.compile(r'[A-Za-z0-9/+=]{40}'),
+        # Exactly 40 key characters standing alone and mixing upper, lower and digits, like an AWS
+        # secret key. A bare 40 character match also redacted git SHAs and long file paths.
+        'aws_secret': re.compile(
+            r'(?<![A-Za-z0-9/+])'
+            r'(?=[A-Za-z0-9/+]{0,39}[A-Z])(?=[A-Za-z0-9/+]{0,39}[a-z])(?=[A-Za-z0-9/+]{0,39}[0-9])'
+            r'[A-Za-z0-9/+]{40}(?![A-Za-z0-9/+=])'
+        ),
         'github_token': re.compile(r'ghp_[A-Za-z0-9]{36}'),
         'stripe_key': re.compile(r'(?:sk|pk)_(?:test|live)_[A-Za-z0-9]{24,}'),
         'uuid': re.compile(r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b', re.I),

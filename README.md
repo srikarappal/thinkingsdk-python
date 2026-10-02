@@ -165,6 +165,11 @@ how to fix it from `repository_context`. Three gaps made that unreliable:
 from `.git` without invoking git. Outside a checkout (most containers) the branch falls back
 to `main` and the commit is `null`, as before.
 
+The PII scrubber's AWS secret pattern matched any run of 40 key characters, so it redacted
+git SHAs and the middle of long file paths (`/home/app/src/services/payment/process.py`
+arrived as `[REDACTED]ent/process.py`). It now matches only a standalone 40 character key
+that mixes upper case, lower case and digits.
+
 ## Caught exceptions are opt-in (0.1.5)
 
 `sys.monitoring.events.RAISE` fires on every `raise`, not only on failures, so subscribing to it

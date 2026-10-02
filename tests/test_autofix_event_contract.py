@@ -16,6 +16,7 @@ import pytest
 
 from thinkingsdk.git_info import read_git_head
 from thinkingsdk.instrumentation import RuntimeInstrumentation, is_in_app_path
+from thinkingsdk.pii_scrubber import PIIScrubber
 from thinkingsdk.safety import MAX_TRACEBACK_FRAMES, encode_event, safe_traceback
 
 COMMIT = 'a3f8c1d9e2b7f4a6c8d0e1f2a3b4c5d6e7f8a9b0'
@@ -149,3 +150,34 @@ class TestReadGitHead:
 
     def test_outside_a_checkout(self, tmp_path):
         assert read_git_head(str(tmp_path)) == (None, None)
+
+
+class TestScrubberKeepsRoutingData:
+    """The AWS secret pattern used to match any 40 character run, redacting SHAs and long paths."""
+
+    @pytest.mark.parametrize('value', [
+        COMMIT,
+        '/home/ubuntu/myproject/src/services/payment/process.py',
+        '/usr/src/app/services/billing/invoices/generate.py',
+    ])
+    def test_shas_and_paths_survive(self, value):
+        assert PIIScrubber({})._scrub_string(value) == value
+
+    @pytest.mark.parametrize('value, expected', [
+        ('wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', '[REDACTED]'),
+        ('aws_secret_access_key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY end', 'aws_secret_access_key=[REDACTED] end'),
+    ])
+    def test_aws_secret_keys_are_still_redacted(self, value, expected):
+        assert PIIScrubber({})._scrub_string(value) == expected
+
+    def test_scrubbed_crash_keeps_commit_and_frame_paths(self, tmp_path, monkeypatch):
+        git_dir = tmp_path / '.git'
+        (git_dir / 'refs' / 'heads').mkdir(parents=True)
+        (git_dir / 'HEAD').write_text('ref: refs/heads/main\n')
+        (git_dir / 'refs' / 'heads' / 'main').write_text(COMMIT)
+        monkeypatch.chdir(tmp_path)
+
+        event = PIIScrubber({}).scrub_event(
+            captured_excepthook_event(depth=1, config={'git_repositories': ['https://github.com/acme/shop']}))
+        assert event['repository_context']['commit_hash'] == COMMIT
+        assert all('[REDACTED]' not in frame['file_path'] for frame in event['exception']['structured_traceback'])
